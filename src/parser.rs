@@ -3,11 +3,33 @@ use crate::{
     lexer::{Lexer, Token},
 };
 
+macro_rules! verify_next_token {
+    ($x:tt, $pattern:pat $(,)?) => {
+        match $x.peek_token()? {
+            $pattern => {}
+            x => {
+                return Err(Error::new(
+                    ErrorKind::UnexpectedToken,
+                    format!(
+                        "unexpected token {:?}. expected {:?}",
+                        x,
+                        stringify!($pattern)
+                    ),
+                ));
+            }
+        }
+    };
+}
+
 // TODO: rethink Box<Node> - storing nodes on the heap isn't great.
 // use lifetimed reference?
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Program {
+        body: Vec<Node>,
+    },
+    FnDeclaration {
+        name: String,
         body: Vec<Node>,
     },
     BinaryExpr {
@@ -39,11 +61,7 @@ impl Parser {
         let mut body: Vec<Node> = vec![];
 
         while self.peek_token()? != Token::EOF {
-            let node = self.parse_statement()?;
-            match node {
-                Some(x) => body.push(x),
-                None => {}
-            }
+            body.push(self.parse_declaration()?)
         }
 
         Ok(Node::Program { body })
@@ -54,6 +72,60 @@ impl Parser {
     }
     fn eat_token(&mut self) -> Result<Token, Error> {
         self.lexer.next_token()
+    }
+
+    fn parse_declaration(&mut self) -> NodeResult {
+        // TODO: only function definitions are supported
+        // declarations atm. structs, enums, etc. will
+        // have to be implemented
+        match self.peek_token()? {
+            Token::Fn => self.parse_fn_definition(),
+            x => Err(Error::new(
+                ErrorKind::UnexpectedToken,
+                format!("unexpected token {:?}.", x),
+            )),
+        }
+    }
+
+    fn parse_fn_definition(&mut self) -> NodeResult {
+        verify_next_token!(self, Token::Fn);
+        let _ = self.eat_token()?;
+
+        verify_next_token!(self, Token::Identifier(_));
+        let name = match self.eat_token()? {
+            Token::Identifier(x) => x,
+            _ => String::new(),
+        };
+        verify_next_token!(self, Token::ParenOpen);
+        let _ = self.eat_token()?;
+
+        // TODO: parse function parameters
+
+        verify_next_token!(self, Token::ParenClose);
+        let _ = self.eat_token()?;
+
+        // TODO: parse function return type
+
+        verify_next_token!(self, Token::BracketOpen);
+        let _ = self.eat_token()?;
+
+        let body = self.parse_block()?;
+        let _ = self.eat_token()?; // eat the closing bracket
+
+        Ok(Node::FnDeclaration { name, body })
+    }
+
+    fn parse_block(&mut self) -> Result<Vec<Node>, Error> {
+        let mut body = vec![];
+
+        while self.peek_token()? != Token::BracketClose {
+            let node = self.parse_statement()?;
+            match node {
+                Some(x) => body.push(x),
+                None => {}
+            }
+        }
+        Ok(body)
     }
 
     fn parse_statement(&mut self) -> Result<Option<Node>, Error> {
