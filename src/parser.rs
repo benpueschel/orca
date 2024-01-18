@@ -3,6 +3,15 @@ use crate::{
     lexer::{Lexer, Token},
 };
 
+macro_rules! unexpected_token {
+    ($x:tt) => {
+        Error::new(
+            ErrorKind::UnexpectedToken,
+            format!("unexpected token {:?}.", $x),
+        )
+    };
+}
+
 macro_rules! verify_next_token {
     ($x:tt, $pattern:pat $(,)?) => {
         match $x.peek_token()? {
@@ -31,6 +40,10 @@ pub enum Node {
     FnDeclaration {
         name: String,
         body: Vec<Node>,
+    },
+    LetDeclaration {
+        name: String,
+        expr: Option<Box<Node>>,
     },
     BinaryExpr {
         left: Box<Node>,
@@ -79,11 +92,8 @@ impl Parser {
         // declarations atm. structs, enums, etc. will
         // have to be implemented
         match self.peek_token()? {
-            Token::Fn => self.parse_fn_definition(),
-            x => Err(Error::new(
-                ErrorKind::UnexpectedToken,
-                format!("unexpected token {:?}.", x),
-            )),
+            Token::Fn => return self.parse_fn_definition(),
+            x => return Err(unexpected_token!(x)),
         }
     }
 
@@ -94,7 +104,7 @@ impl Parser {
         verify_next_token!(self, Token::Identifier(_));
         let name = match self.eat_token()? {
             Token::Identifier(x) => x,
-            _ => String::new(),
+            _ => panic!("you seriously fucked up."),
         };
         verify_next_token!(self, Token::ParenOpen);
         let _ = self.eat_token()?;
@@ -129,10 +139,37 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Option<Node>, Error> {
-        match self.parse_expression() {
+        let statement = match self.peek_token()? {
+            Token::Let => self.parse_variable_declaration(),
+            _ => self.parse_expression(),
+        };
+        match statement {
             Ok(x) if x == Node::Semicolon => Ok(None),
             Ok(x) => Ok(Some(x)),
             Err(x) => Err(x),
+        }
+    }
+
+    fn parse_variable_declaration(&mut self) -> Result<Node, Error> {
+        verify_next_token!(self, Token::Let);
+        let _ = self.eat_token()?;
+
+        verify_next_token!(self, Token::Identifier(_));
+        let name = match self.eat_token()? {
+            Token::Identifier(name) => name,
+            _ => panic!("you seriously fucked up."),
+        };
+
+        match self.eat_token()? {
+            Token::Semicolon => return Ok(Node::LetDeclaration { name, expr: None }),
+            Token::Equal => match self.parse_add_expression()? {
+                Node::Semicolon => Err(unexpected_token!("Semicolon")),
+                node => Ok(Node::LetDeclaration {
+                    name,
+                    expr: Some(Box::new(node)),
+                }),
+            },
+            x => Err(unexpected_token!(x)),
         }
     }
 
@@ -231,9 +268,9 @@ mod test {
 
     #[test]
     fn test() {
-        let lexer = Lexer::new("".into());
+        let lexer = Lexer::new("fn main() { x + 10; } fn test1() { y - 5; }".into());
         let mut parser = Parser::new(lexer);
-        let ast = parser.produce_ast();
+        let ast = parser.produce_ast().expect("parsing error");
         println!("{:?}", ast);
     }
 }
