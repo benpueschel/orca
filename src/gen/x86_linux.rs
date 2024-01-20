@@ -78,7 +78,7 @@ impl<'a> LinuxX86Asm {
                 if let Some(expr) = expr {
                     if let Some(reg) = self.expr_gen(expr)?.register {
                         let move_to_stack =
-                            format!("movq {}, {}", Self::register_name(reg), stack_pos);
+                            format!("movq {}, {}\n", Self::register_name(reg), stack_pos);
                         self.output += &move_to_stack;
                         self.register_free(reg);
                     }
@@ -104,10 +104,14 @@ impl<'a> LinuxX86Asm {
                 let fn_label = format!("_{}:\n", name);
                 self.output += &fn_label;
 
+                self.output += "pushq %rbp\n"; // set up new stack frame
+                self.output += "movq %rsp, %rbp\n";
+
                 for stmt in body {
                     let _ = self.node_gen(stmt);
                 }
 
+                self.output += "popq %rbp\n";
                 self.idents_in_scope.pop_front();
                 return Ok(GenNode {
                     node,
@@ -183,7 +187,7 @@ impl<'a> LinuxX86Asm {
                 if let Token::Equal = operator {
                     if let Node::Identifier { value } = left.as_ref() {
                         let move_to_stack = format!(
-                            "movq {}, {}",
+                            "movq {}, {}\n",
                             Self::register_name(left_reg),
                             self.find_var_in_scope(value)?
                         );
