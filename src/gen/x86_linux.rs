@@ -1,3 +1,5 @@
+use std::collections::{HashMap, VecDeque};
+
 use crate::{
     error::{Error, ErrorKind},
     gen::Assembly,
@@ -13,15 +15,19 @@ const REGISTER_SIZE: usize = 6;
 pub struct LinuxX86Asm {
     registers: [bool; REGISTER_SIZE],
     output: String,
+    stack_offset: usize,
+    idents_in_scope: VecDeque<HashMap<String, String>>,
 }
 
 impl<'a> CodeGenerator<'a> for LinuxX86Asm {
     fn generate_assembly(&mut self, node: &'a Node) -> Result<&str, Error> {
         match node {
             Node::Program { body } => {
+                self.idents_in_scope.push_front(HashMap::new());
                 for node in body {
                     let _ = self.node_gen(node);
                 }
+                self.idents_in_scope.pop_back();
                 return Ok(&self.output);
             }
             _ => return Err(Error::new(ErrorKind::InvalidData, "node is not a program.")),
@@ -34,6 +40,8 @@ impl<'a> LinuxX86Asm {
         LinuxX86Asm {
             registers: [false; REGISTER_SIZE],
             output: String::new(),
+            stack_offset: 0,
+            idents_in_scope: VecDeque::new(),
         }
     }
 
@@ -60,10 +68,18 @@ impl<'a> LinuxX86Asm {
 
     fn let_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         match node {
-            Node::LetDeclaration { name: _, expr } => {
-                // TODO: push to the stack
+            Node::LetDeclaration { name, expr } => {
+                // TODO: evaluate actual type size instead of forcing type i64
+                self.stack_offset += 8;
+                let stack_pos = format!("-{}(%rbp)", self.stack_offset);
+                let current_scope = &mut self.idents_in_scope[0];
+                current_scope.insert(name.clone(), stack_pos.clone());
+
                 if let Some(expr) = expr {
                     if let Some(reg) = self.expr_gen(expr)?.register {
+                        let move_to_stack =
+                            format!("movq {}, {}", Self::register_name(reg), stack_pos);
+                        self.output += &move_to_stack;
                         self.register_free(reg);
                     }
                 }
@@ -84,6 +100,7 @@ impl<'a> LinuxX86Asm {
     fn func_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         match node {
             Node::FnDeclaration { name, body } => {
+                self.idents_in_scope.push_front(HashMap::new());
                 let fn_label = format!("_{}:\n", name);
                 self.output += &fn_label;
 
@@ -91,6 +108,7 @@ impl<'a> LinuxX86Asm {
                     let _ = self.node_gen(stmt);
                 }
 
+                self.idents_in_scope.pop_front();
                 return Ok(GenNode {
                     node,
                     register: None,
@@ -103,6 +121,18 @@ impl<'a> LinuxX86Asm {
                 ))
             }
         }
+    }
+
+    fn find_var_in_scope(&mut self, value: &str) -> Result<String, Error> {
+        for scope in &self.idents_in_scope {
+            if let Some(address) = scope.get(value) {
+                return Ok(address.clone());
+            }
+        }
+        Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("could not find variable '{}' in current scope.", value),
+        ))
     }
 
     fn expr_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
@@ -118,12 +148,24 @@ impl<'a> LinuxX86Asm {
                     register: Some(register),
                 });
             }
+            Node::Identifier { value } => {
+                let address = self.find_var_in_scope(value)?;
+                let register = self.register_alloc()?;
+                let move_instruction =
+                    format!("movq {}, {}\n", address, Self::register_name(register));
+                self.output += &move_instruction;
+
+                return Ok(GenNode {
+                    node,
+                    register: Some(register),
+                });
+            }
             Node::BinaryExpr {
                 left,
                 right,
                 operator,
             } => {
-                // NOTE: we want to store our result in left_reg because of assignments, where 
+                // NOTE: we want to store our result in left_reg because of assignments, where
                 // the result of the right node should be moved into the left node, so we flip
                 // the left and right registers around in the actual instruction
                 let left_reg = option_unwrap!(self.expr_gen(left)?.register, "left_reg is None");
@@ -139,7 +181,15 @@ impl<'a> LinuxX86Asm {
                 self.register_free(right_reg);
 
                 if let Token::Equal = operator {
-                    // TODO: move left_reg to the correct address
+                    if let Node::Identifier { value } = left.as_ref() {
+                        let move_to_stack = format!(
+                            "movq {}, {}",
+                            Self::register_name(left_reg),
+                            self.find_var_in_scope(value)?
+                        );
+                        self.output += &move_to_stack;
+                        self.register_free(left_reg);
+                    }
                 }
 
                 return Ok(GenNode {
@@ -201,7 +251,7 @@ impl Assembly for LinuxX86Asm {
             Token::Minus => "subq",
             Token::Star => "imul",
             Token::Slash => "idiv",
-            Token::Equal => "mov",
+            Token::Equal => "movq",
             _ => panic!("unexpected token"),
         }
     }

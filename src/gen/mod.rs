@@ -24,7 +24,7 @@ struct GenNode<'a> {
     pub node: &'a Node,
     pub register: Option<Register>,
 }
- 
+
 trait Assembly {
     fn register_alloc(&mut self) -> Result<Register, Error>;
     fn register_free(&mut self, reg: Register);
@@ -48,7 +48,8 @@ mod test {
         let lexer = Lexer::new(
             "fn main() { 
                 let x = 3 + 7; 
-                10 * 5;
+                let y = 5 * x;
+                x = y - 3;
             }"
             .into(),
         );
