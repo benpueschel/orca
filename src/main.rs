@@ -5,6 +5,7 @@ use crate::{lexer::Lexer, parser::Parser};
 pub mod error;
 pub mod lexer;
 pub mod parser;
+pub mod gen;
 
 fn main() -> std::io::Result<()> {
     let stdin = std::io::stdin();

@@ -235,28 +235,15 @@ impl Parser {
             Token::Integer(x) => Ok(Node::IntegerLiteral { value: x }),
             Token::ParenOpen => self.parse_paren_expression(),
             Token::Semicolon => Ok(Node::Semicolon),
-            _ => Err(Error::new(
-                ErrorKind::UnexpectedToken,
-                format!("unexpected token {:?}", token),
-            )),
+            x => Err(unexpected_token!(x)),
         }
     }
 
     fn parse_paren_expression(&mut self) -> NodeResult {
+        // FIXME: not validating ParenOpen token, could lead to nasty bugs
         let value = self.parse_expression();
-        let next_token = self.peek_token()?;
-        match next_token {
-            Token::ParenClose => {
-                // consume the closing paren
-                let _ = self.eat_token();
-            }
-            x => {
-                return Err(Error::new(
-                    ErrorKind::UnexpectedToken,
-                    format!("unexpected token '{:?}'. Expected ParenClose ')'", x),
-                ))
-            }
-        };
+        verify_next_token!(self, Token::ParenClose);
+        let _ = self.eat_token()?;
         value
     }
 }
@@ -268,7 +255,13 @@ mod test {
 
     #[test]
     fn test() {
-        let lexer = Lexer::new("fn main() { x + 10; } fn test1() { y - 5; }".into());
+        let lexer = Lexer::new(
+            "fn main() { 
+                let x = 3 + 7; 
+                x = x * 5;
+            }"
+            .into(),
+        );
         let mut parser = Parser::new(lexer);
         let ast = parser.produce_ast().expect("parsing error");
         println!("{:?}", ast);
