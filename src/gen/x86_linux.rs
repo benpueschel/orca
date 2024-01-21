@@ -51,6 +51,7 @@ impl<'a> LinuxX86Asm {
 
         match node {
             Node::FnDeclaration { name: _, body: _ } => self.func_gen(node),
+            Node::ReturnStatement { expr: _ } => self.return_gen(node),
             Node::LetDeclaration { name: _, expr: _ } => self.let_gen(node),
             Node::BinaryExpr {
                 left: _,
@@ -61,6 +62,34 @@ impl<'a> LinuxX86Asm {
                 return Err(Error::new(
                     ErrorKind::InvalidData,
                     format!("could not generate asm for node {:?}", node),
+                ))
+            }
+        }
+    }
+
+    fn return_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
+        match node {
+            Node::ReturnStatement { expr } => {
+                if let Some(x) = expr {
+                    if let Some(reg) = self.expr_gen(x)?.register {
+                        let instruction = format!("movq {}, %rax\n", Self::register_name(reg));
+                        self.output += &instruction;
+                    }
+                }
+                // TODO: rethink design decision. should %rbp
+                // be popped in the return statement? will
+                // definitely lead to problems with scoped blocks
+                self.output += "popq %rbp\n";
+                self.output += "retq\n";
+                return Ok(GenNode {
+                    node,
+                    register: None,
+                });
+            }
+            _ => {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    format!("node {:?} is not a return statement", node),
                 ))
             }
         }
@@ -106,12 +135,14 @@ impl<'a> LinuxX86Asm {
 
                 self.output += "pushq %rbp\n"; // set up new stack frame
                 self.output += "movq %rsp, %rbp\n";
+                self.output += "movl $o, -4(%rbp)\n";
+                self.stack_offset += 4;
 
                 for stmt in body {
                     let _ = self.node_gen(stmt);
                 }
 
-                self.output += "popq %rbp\n";
+                // self.output += "popq %rbp\n";
                 self.idents_in_scope.pop_front();
                 return Ok(GenNode {
                     node,

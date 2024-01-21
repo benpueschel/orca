@@ -49,7 +49,7 @@ mod test {
             "fn main() { 
                 let x = 3 + 7; 
                 let y = 5 * x;
-                x = y - 3;
+                return y - 3;
             }"
             .into(),
         );

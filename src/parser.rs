@@ -45,6 +45,9 @@ pub enum Node {
         name: String,
         expr: Option<Box<Node>>,
     },
+    ReturnStatement {
+        expr: Option<Box<Node>>,
+    },
     BinaryExpr {
         left: Box<Node>,
         right: Box<Node>,
@@ -140,6 +143,7 @@ impl Parser {
 
     fn parse_statement(&mut self) -> Result<Option<Node>, Error> {
         let statement = match self.peek_token()? {
+            Token::Return => self.parse_return_statement(),
             Token::Let => self.parse_variable_declaration(),
             _ => self.parse_expression(),
         };
@@ -148,6 +152,22 @@ impl Parser {
             Ok(x) => Ok(Some(x)),
             Err(x) => Err(x),
         }
+    }
+
+    fn parse_return_statement(&mut self) -> NodeResult {
+        verify_next_token!(self, Token::Return);
+        let _ = self.eat_token()?;
+
+        let expr = match self.peek_token()? {
+            Token::Semicolon => {
+                let _ = self.eat_token();
+                None
+            }
+            Token::Equal => return Err(unexpected_token!("Equal")),
+            _ => Some(Box::new(self.parse_expression()?)),
+        };
+
+        Ok(Node::ReturnStatement { expr })
     }
 
     fn parse_variable_declaration(&mut self) -> Result<Node, Error> {
