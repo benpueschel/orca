@@ -1,4 +1,5 @@
-use crate::{error::Error, lexer::Token, parser::Node};
+use crate::{error::Error, lexer::Token};
+use crate::ast::Node;
 
 use self::x86_linux::LinuxX86Asm;
 

@@ -1,4 +1,5 @@
 use crate::{
+    ast::{BinaryExprData, FnDeclData, LetDeclData, Node, ProgramData, ReturnData},
     error::{Error, ErrorKind},
     lexer::{Lexer, Token},
 };
@@ -30,38 +31,6 @@ macro_rules! verify_next_token {
     };
 }
 
-// TODO: rethink Box<Node> - storing nodes on the heap isn't great.
-// use lifetimed reference?
-#[derive(Debug, Clone, PartialEq)]
-pub enum Node {
-    Program {
-        body: Vec<Node>,
-    },
-    FnDeclaration {
-        name: String,
-        body: Vec<Node>,
-    },
-    LetDeclaration {
-        name: String,
-        expr: Option<Box<Node>>,
-    },
-    ReturnStatement {
-        expr: Option<Box<Node>>,
-    },
-    BinaryExpr {
-        left: Box<Node>,
-        right: Box<Node>,
-        operator: Token,
-    },
-    Identifier {
-        value: String,
-    },
-    IntegerLiteral {
-        value: usize,
-    },
-    Semicolon,
-}
-
 pub struct Parser {
     lexer: Lexer,
 }
@@ -80,7 +49,7 @@ impl Parser {
             body.push(self.parse_declaration()?)
         }
 
-        Ok(Node::Program { body })
+        Ok(Node::Program(ProgramData { body }))
     }
 
     fn peek_token(&mut self) -> Result<Token, Error> {
@@ -125,7 +94,7 @@ impl Parser {
         let body = self.parse_block()?;
         let _ = self.eat_token()?; // eat the closing bracket
 
-        Ok(Node::FnDeclaration { name, body })
+        Ok(Node::FnDeclaration(FnDeclData { name, body }))
     }
 
     fn parse_block(&mut self) -> Result<Vec<Node>, Error> {
@@ -167,7 +136,7 @@ impl Parser {
             _ => Some(Box::new(self.parse_expression()?)),
         };
 
-        Ok(Node::ReturnStatement { expr })
+        Ok(Node::ReturnStatement(ReturnData { expr }))
     }
 
     fn parse_variable_declaration(&mut self) -> Result<Node, Error> {
@@ -181,13 +150,21 @@ impl Parser {
         };
 
         match self.eat_token()? {
-            Token::Semicolon => return Ok(Node::LetDeclaration { name, expr: None }),
+            // TODO: check types
+            Token::Semicolon => {
+                return Ok(Node::LetDeclaration(LetDeclData {
+                    name,
+                    expr: None,
+                    r#type: None,
+                }))
+            }
             Token::Equal => match self.parse_add_expression()? {
                 Node::Semicolon => Err(unexpected_token!("Semicolon")),
-                node => Ok(Node::LetDeclaration {
+                node => Ok(Node::LetDeclaration(LetDeclData {
                     name,
                     expr: Some(Box::new(node)),
-                }),
+                    r#type: None,
+                })),
             },
             x => Err(unexpected_token!(x)),
         }
@@ -205,11 +182,11 @@ impl Parser {
         while self.peek_token()? == Token::Equal {
             let operator = self.eat_token()?;
             let right = self.parse_add_expression()?;
-            left = Node::BinaryExpr {
+            left = Node::BinaryExpr(BinaryExprData {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
-            };
+            });
         }
         Ok(left)
     }
@@ -222,11 +199,11 @@ impl Parser {
         while self.peek_token()? == Token::Plus || self.peek_token()? == Token::Minus {
             let operator = self.eat_token()?;
             let right = self.parse_mult_expression()?;
-            left = Node::BinaryExpr {
+            left = Node::BinaryExpr(BinaryExprData {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
-            };
+            });
         }
         Ok(left)
     }
@@ -239,11 +216,11 @@ impl Parser {
         while self.peek_token()? == Token::Star || self.peek_token()? == Token::Slash {
             let operator = self.eat_token()?;
             let right = self.parse_primary_expression()?;
-            left = Node::BinaryExpr {
+            left = Node::BinaryExpr(BinaryExprData {
                 left: Box::new(left),
                 right: Box::new(right),
                 operator,
-            };
+            });
         }
         Ok(left)
     }
@@ -251,8 +228,8 @@ impl Parser {
     fn parse_primary_expression(&mut self) -> NodeResult {
         let token = self.eat_token()?;
         match token {
-            Token::Identifier(x) => Ok(Node::Identifier { value: x }),
-            Token::Integer(x) => Ok(Node::IntegerLiteral { value: x }),
+            Token::Identifier(x) => Ok(Node::Identifier(x)),
+            Token::Integer(x) => Ok(Node::IntegerLiteral(x)),
             Token::ParenOpen => self.parse_paren_expression(),
             Token::Semicolon => Ok(Node::Semicolon),
             x => Err(unexpected_token!(x)),

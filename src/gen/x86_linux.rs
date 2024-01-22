@@ -1,11 +1,11 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::{
+    ast::{BinaryExprData, FnDeclData, LetDeclData, Node, ProgramData, ReturnData},
     error::{Error, ErrorKind},
     gen::Assembly,
     lexer::Token,
     option_unwrap,
-    parser::Node,
 };
 
 use super::{CodeGenerator, GenNode, Register};
@@ -22,7 +22,7 @@ pub struct LinuxX86Asm {
 impl<'a> CodeGenerator<'a> for LinuxX86Asm {
     fn generate_assembly(&mut self, node: &'a Node) -> Result<&str, Error> {
         match node {
-            Node::Program { body } => {
+            Node::Program(ProgramData { body }) => {
                 self.idents_in_scope.push_front(HashMap::new());
                 for node in body {
                     let _ = self.node_gen(node);
@@ -50,14 +50,10 @@ impl<'a> LinuxX86Asm {
         self.output += "\n";
 
         match node {
-            Node::FnDeclaration { name: _, body: _ } => self.func_gen(node),
-            Node::ReturnStatement { expr: _ } => self.return_gen(node),
-            Node::LetDeclaration { name: _, expr: _ } => self.let_gen(node),
-            Node::BinaryExpr {
-                left: _,
-                right: _,
-                operator: _,
-            } => self.expr_gen(node),
+            Node::FnDeclaration(_) => self.func_gen(node),
+            Node::ReturnStatement(_) => self.return_gen(node),
+            Node::LetDeclaration(_) => self.let_gen(node),
+            Node::BinaryExpr(_) => self.expr_gen(node),
             _ => {
                 return Err(Error::new(
                     ErrorKind::InvalidData,
@@ -69,7 +65,7 @@ impl<'a> LinuxX86Asm {
 
     fn return_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         match node {
-            Node::ReturnStatement { expr } => {
+            Node::ReturnStatement(ReturnData { expr }) => {
                 if let Some(x) = expr {
                     if let Some(reg) = self.expr_gen(x)?.register {
                         let instruction = format!("movq {}, %rax\n", Self::register_name(reg));
@@ -97,7 +93,11 @@ impl<'a> LinuxX86Asm {
 
     fn let_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         match node {
-            Node::LetDeclaration { name, expr } => {
+            Node::LetDeclaration(LetDeclData {
+                name,
+                expr,
+                r#type: _,
+            }) => {
                 // TODO: evaluate actual type size instead of forcing type i64
                 self.stack_offset += 8;
                 let stack_pos = format!("-{}(%rbp)", self.stack_offset);
@@ -128,14 +128,14 @@ impl<'a> LinuxX86Asm {
 
     fn func_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         match node {
-            Node::FnDeclaration { name, body } => {
+            Node::FnDeclaration(FnDeclData { name, body }) => {
                 self.idents_in_scope.push_front(HashMap::new());
                 let fn_label = format!("_{}:\n", name);
                 self.output += &fn_label;
 
                 self.output += "pushq %rbp\n"; // set up new stack frame
                 self.output += "movq %rsp, %rbp\n";
-                self.output += "movl $o, -4(%rbp)\n";
+                self.output += "movl $0, -4(%rbp)\n";
                 self.stack_offset += 4;
 
                 for stmt in body {
@@ -172,7 +172,7 @@ impl<'a> LinuxX86Asm {
 
     fn expr_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         match node {
-            Node::IntegerLiteral { value } => {
+            Node::IntegerLiteral(value) => {
                 let register = self.register_alloc()?;
                 let move_instruction =
                     format!("movq ${}, {}\n", value, Self::register_name(register));
@@ -183,7 +183,7 @@ impl<'a> LinuxX86Asm {
                     register: Some(register),
                 });
             }
-            Node::Identifier { value } => {
+            Node::Identifier(value) => {
                 let address = self.find_var_in_scope(value)?;
                 let register = self.register_alloc()?;
                 let move_instruction =
@@ -195,16 +195,16 @@ impl<'a> LinuxX86Asm {
                     register: Some(register),
                 });
             }
-            Node::BinaryExpr {
+            Node::BinaryExpr(BinaryExprData {
                 left,
                 right,
                 operator,
-            } => {
+            }) => {
                 // NOTE: we want to store our result in left_reg because of assignments, where
                 // the result of the right node should be moved into the left node, so we flip
                 // the left and right registers around in the actual instruction
                 let left_reg = option_unwrap!(self.expr_gen(left)?.register, "left_reg is None");
-                let right_reg = option_unwrap!(self.expr_gen(right)?.register, "left_reg is None");
+                let right_reg = option_unwrap!(self.expr_gen(right)?.register, "right_reg is None");
 
                 let instruction = format!(
                     "{} {}, {}\n",
@@ -216,7 +216,7 @@ impl<'a> LinuxX86Asm {
                 self.register_free(right_reg);
 
                 if let Token::Equal = operator {
-                    if let Node::Identifier { value } = left.as_ref() {
+                    if let Node::Identifier(value) = left.as_ref() {
                         let move_to_stack = format!(
                             "movq {}, {}\n",
                             Self::register_name(left_reg),
