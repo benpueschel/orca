@@ -1,5 +1,5 @@
 use crate::{
-    ast::{BinaryExprData, FnDeclData, LetDeclData, Node, ProgramData, ReturnData},
+    ast::{BinaryExprData, FnDeclData, IfData, LetDeclData, Node, ProgramData, ReturnData},
     error::{Error, ErrorKind},
     lexer::{Lexer, Token},
 };
@@ -112,6 +112,7 @@ impl Parser {
 
     fn parse_statement(&mut self) -> Result<Option<Node>, Error> {
         let statement = match self.peek_token()? {
+            Token::If => self.parse_if_statement(),
             Token::Return => self.parse_return_statement(),
             Token::Let => self.parse_variable_declaration(),
             _ => self.parse_expression(),
@@ -121,6 +122,50 @@ impl Parser {
             Ok(x) => Ok(Some(x)),
             Err(x) => Err(x),
         }
+    }
+
+    fn parse_if_statement(&mut self) -> NodeResult {
+        verify_next_token!(self, Token::If);
+        self.eat_token()?;
+        verify_next_token!(self, Token::ParenOpen);
+        self.eat_token()?;
+
+        let expr = Box::new(self.parse_expression()?);
+
+        verify_next_token!(self, Token::ParenClose);
+        self.eat_token()?;
+        verify_next_token!(self, Token::BracketOpen);
+        self.eat_token()?;
+        // series of statements
+
+        let mut body = Vec::new();
+        while self.peek_token()? != Token::BracketClose {
+            if let Some(x) = self.parse_statement()? {
+                body.push(x);
+            }
+        }
+
+        verify_next_token!(self, Token::BracketClose);
+        self.eat_token()?;
+        // optional: else
+        let mut else_body = Vec::new();
+        if let Token::Else = self.peek_token()? {
+            self.eat_token()?;
+            verify_next_token!(self, Token::BracketOpen);
+            self.eat_token()?;
+            while self.peek_token()? != Token::BracketClose {
+                if let Some(x) = self.parse_statement()? {
+                    else_body.push(x);
+                }
+            }
+            self.eat_token()?;
+        }
+
+        Ok(Node::IfStatement(IfData {
+            expr,
+            body,
+            else_body,
+        }))
     }
 
     fn parse_return_statement(&mut self) -> NodeResult {
@@ -191,6 +236,23 @@ impl Parser {
         Ok(left)
     }
 
+    fn parse_comparision_expression(&mut self) -> NodeResult {
+        let mut left = self.parse_add_expression()?;
+        if left == Node::Semicolon {
+            return Ok(left);
+        }
+        while self.peek_token()? == Token::Equal {
+            let operator = self.eat_token()?;
+            let right = self.parse_add_expression()?;
+            left = Node::BinaryExpr(BinaryExprData {
+                left: Box::new(left),
+                right: Box::new(right),
+                operator,
+            });
+        }
+        Ok(left)
+    }
+
     fn parse_add_expression(&mut self) -> NodeResult {
         let mut left = self.parse_mult_expression()?;
         if left == Node::Semicolon {
@@ -227,6 +289,7 @@ impl Parser {
 
     fn parse_primary_expression(&mut self) -> NodeResult {
         let token = self.eat_token()?;
+        println!("{:?}", &token);
         match token {
             Token::Identifier(x) => Ok(Node::Identifier(x)),
             Token::Integer(x) => Ok(Node::IntegerLiteral(x)),

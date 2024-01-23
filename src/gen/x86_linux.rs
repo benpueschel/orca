@@ -1,12 +1,22 @@
-use std::collections::{HashMap, VecDeque};
+use std::{collections::{HashMap, VecDeque}, ops::AddAssign};
 
 use crate::{
-    ast::{BinaryExprData, FnDeclData, LetDeclData, Node, ProgramData, ReturnData},
+    ast::{BinaryExprData, FnDeclData, IfData, LetDeclData, Node, ProgramData, ReturnData},
     error::{Error, ErrorKind},
     gen::Assembly,
     lexer::Token,
     option_unwrap,
 };
+
+trait StringAppend {
+    fn append(&mut self, str: String);
+}
+
+impl StringAppend for String {
+    fn append(&mut self, str: String) {
+        self.add_assign(&str);
+    }
+}
 
 use super::{CodeGenerator, GenNode, Register};
 
@@ -51,6 +61,7 @@ impl<'a> LinuxX86Asm {
 
         match node {
             Node::FnDeclaration(_) => self.func_gen(node),
+            Node::IfStatement(_) => self.if_gen(node),
             Node::ReturnStatement(_) => self.return_gen(node),
             Node::LetDeclaration(_) => self.let_gen(node),
             Node::BinaryExpr(_) => self.expr_gen(node),
@@ -61,6 +72,43 @@ impl<'a> LinuxX86Asm {
                 ))
             }
         }
+    }
+
+    fn if_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
+        if let Node::IfStatement(data) = node {
+            let label = Self::label_name(self.label_create());
+            let reg = self
+                .expr_gen(&data.expr)?
+                .register
+                .expect("could not allocate register");
+
+            self.output.append(format!("cmp $0, {}\n", Self::register_name(reg)));
+            self.register_free(reg);
+
+            if data.else_body.len() > 0 {
+                self.output.append(format!("jeq {}_ELSE\n", label));
+            }
+            for statement in &data.body {
+                self.node_gen(&statement)?;
+            }
+            self.output.append(format!("jmp {}_DONE\n", label));
+
+            self.output.append(format!("{}_ELSE:\n", label));
+            for statement in &data.else_body {
+                self.node_gen(&statement)?;
+            }
+
+            self.output.append(format!("{}_DONE:\n", label));
+            return Ok(GenNode {
+                node,
+                register: None,
+            });
+        }
+
+        Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("node {:?} is not an if statement.", node),
+        ))
     }
 
     fn return_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
@@ -281,6 +329,6 @@ impl Assembly for LinuxX86Asm {
     }
 
     fn label_name(label: usize) -> String {
-        format!(".L{}:", label)
+        format!(".L{}", label)
     }
 }

@@ -48,8 +48,15 @@ mod test {
     fn test() {
         let lexer = Lexer::new(
             "fn main() { 
-                let x = 3 + 7; 
+                let x = 0; 
                 let y = 5 * x;
+
+                if(y - x) {
+                    y = 3;
+                } else {
+                    y = 6;
+                }
+
                 return y - 3;
             }"
             .into(),

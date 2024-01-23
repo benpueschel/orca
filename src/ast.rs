@@ -7,6 +7,7 @@ pub enum Node {
     Program(ProgramData),
     FnDeclaration(FnDeclData),
     LetDeclaration(LetDeclData),
+    IfStatement(IfData),
     ReturnStatement(ReturnData),
     BinaryExpr(BinaryExprData),
     Identifier(String),
@@ -17,6 +18,13 @@ pub enum Node {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IfData {
+    pub expr: Box<Node>,
+    pub body: Vec<Node>,
+    pub else_body: Vec<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
