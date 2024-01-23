@@ -1,5 +1,5 @@
-use crate::{error::Error, lexer::Token};
 use crate::ast::Node;
+use crate::{error::Error, lexer::Token};
 
 use self::x86_linux::LinuxX86Asm;
 
@@ -32,7 +32,7 @@ trait Assembly {
     fn register_name(reg: Register) -> &'static str;
 
     fn label_create(&mut self) -> usize;
-    fn label_name(label: usize) -> &'static str;
+    fn label_name(label: usize) -> String;
     fn instruction_name(operator: &Token) -> &'static str;
 }
 

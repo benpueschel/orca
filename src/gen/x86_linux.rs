@@ -14,6 +14,7 @@ const REGISTER_SIZE: usize = 6;
 
 pub struct LinuxX86Asm {
     registers: [bool; REGISTER_SIZE],
+    current_label: usize,
     output: String,
     stack_offset: usize,
     idents_in_scope: VecDeque<HashMap<String, String>>,
@@ -37,6 +38,7 @@ impl<'a> LinuxX86Asm {
     pub fn new() -> Self {
         LinuxX86Asm {
             registers: [false; REGISTER_SIZE],
+            current_label: 0,
             output: String::new(),
             stack_offset: 0,
             idents_in_scope: VecDeque::new(),
@@ -274,10 +276,11 @@ impl Assembly for LinuxX86Asm {
     }
 
     fn label_create(&mut self) -> usize {
-        todo!()
+        self.current_label += 1;
+        self.current_label
     }
 
-    fn label_name(label: usize) -> &'static str {
-        todo!()
+    fn label_name(label: usize) -> String {
+        format!(".L{}:", label)
     }
 }
