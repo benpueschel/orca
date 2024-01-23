@@ -21,17 +21,15 @@ pub struct LinuxX86Asm {
 
 impl<'a> CodeGenerator<'a> for LinuxX86Asm {
     fn generate_assembly(&mut self, node: &'a Node) -> Result<&str, Error> {
-        match node {
-            Node::Program(ProgramData { body }) => {
-                self.idents_in_scope.push_front(HashMap::new());
-                for node in body {
-                    let _ = self.node_gen(node);
-                }
-                self.idents_in_scope.pop_back();
-                return Ok(&self.output);
+        if let Node::Program(ProgramData { body }) = node {
+            self.idents_in_scope.push_front(HashMap::new());
+            for node in body {
+                let _ = self.node_gen(node);
             }
-            _ => return Err(Error::new(ErrorKind::InvalidData, "node is not a program.")),
+            self.idents_in_scope.pop_back();
+            return Ok(&self.output);
         }
+        Err(Error::new(ErrorKind::InvalidData, "node is not a program."))
     }
 }
 
@@ -64,98 +62,82 @@ impl<'a> LinuxX86Asm {
     }
 
     fn return_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
-        match node {
-            Node::ReturnStatement(ReturnData { expr }) => {
-                if let Some(x) = expr {
-                    if let Some(reg) = self.expr_gen(x)?.register {
-                        let instruction = format!("movq {}, %rax\n", Self::register_name(reg));
-                        self.output += &instruction;
-                    }
+        if let Node::ReturnStatement(ReturnData { expr }) = node {
+            if let Some(x) = expr {
+                if let Some(reg) = self.expr_gen(x)?.register {
+                    let instruction = format!("movq {}, %rax\n", Self::register_name(reg));
+                    self.output += &instruction;
                 }
-                // TODO: rethink design decision. should %rbp
-                // be popped in the return statement? will
-                // definitely lead to problems with scoped blocks
-                self.output += "popq %rbp\n";
-                self.output += "retq\n";
-                return Ok(GenNode {
-                    node,
-                    register: None,
-                });
             }
-            _ => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!("node {:?} is not a return statement", node),
-                ))
-            }
+            // TODO: rethink design decision. should %rbp
+            // be popped in the return statement? will
+            // definitely lead to problems with scoped blocks
+            self.output += "popq %rbp\n";
+            self.output += "retq\n";
+            return Ok(GenNode {
+                node,
+                register: None,
+            });
         }
+        Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("node {:?} is not a return statement", node),
+        ))
     }
 
     fn let_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
-        match node {
-            Node::LetDeclaration(LetDeclData {
-                name,
-                expr,
-                r#type: _,
-            }) => {
-                // TODO: evaluate actual type size instead of forcing type i64
-                self.stack_offset += 8;
-                let stack_pos = format!("-{}(%rbp)", self.stack_offset);
-                let current_scope = &mut self.idents_in_scope[0];
-                current_scope.insert(name.clone(), stack_pos.clone());
+        if let Node::LetDeclaration(data) = node {
+            // TODO: evaluate actual type size instead of forcing type i64
+            self.stack_offset += 8;
+            let stack_pos = format!("-{}(%rbp)", self.stack_offset);
+            let current_scope = &mut self.idents_in_scope[0];
+            current_scope.insert(data.name.clone(), stack_pos.clone());
 
-                if let Some(expr) = expr {
-                    if let Some(reg) = self.expr_gen(expr)?.register {
-                        let move_to_stack =
-                            format!("movq {}, {}\n", Self::register_name(reg), stack_pos);
-                        self.output += &move_to_stack;
-                        self.register_free(reg);
-                    }
+            if let Some(expr) = &data.expr {
+                if let Some(reg) = self.expr_gen(expr)?.register {
+                    let move_to_stack =
+                        format!("movq {}, {}\n", Self::register_name(reg), stack_pos);
+                    self.output += &move_to_stack;
+                    self.register_free(reg);
                 }
-                return Ok(GenNode {
-                    node,
-                    register: None,
-                });
             }
-            _ => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!("node {:?} is not a variable declaration", node),
-                ))
-            }
+            return Ok(GenNode {
+                node,
+                register: None,
+            });
         }
+        Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("node {:?} is not a variable declaration", node),
+        ))
     }
 
     fn func_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
-        match node {
-            Node::FnDeclaration(FnDeclData { name, body }) => {
-                self.idents_in_scope.push_front(HashMap::new());
-                let fn_label = format!("_{}:\n", name);
-                self.output += &fn_label;
+        if let Node::FnDeclaration(FnDeclData { name, body }) = node {
+            self.idents_in_scope.push_front(HashMap::new());
+            let fn_label = format!("_{}:\n", name);
+            self.output += &fn_label;
 
-                self.output += "pushq %rbp\n"; // set up new stack frame
-                self.output += "movq %rsp, %rbp\n";
-                self.output += "movl $0, -4(%rbp)\n";
-                self.stack_offset += 4;
+            self.output += "pushq %rbp\n"; // set up new stack frame
+            self.output += "movq %rsp, %rbp\n";
+            self.output += "movl $0, -4(%rbp)\n";
+            self.stack_offset += 4;
 
-                for stmt in body {
-                    let _ = self.node_gen(stmt);
-                }
-
-                // self.output += "popq %rbp\n";
-                self.idents_in_scope.pop_front();
-                return Ok(GenNode {
-                    node,
-                    register: None,
-                });
+            for stmt in body {
+                let _ = self.node_gen(stmt);
             }
-            _ => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!("node {:?} is not a function declaration", node),
-                ))
-            }
+
+            // self.output += "popq %rbp\n";
+            self.idents_in_scope.pop_front();
+            return Ok(GenNode {
+                node,
+                register: None,
+            });
         }
+        Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("node {:?} is not a function declaration", node),
+        ))
     }
 
     fn find_var_in_scope(&mut self, value: &str) -> Result<String, Error> {
