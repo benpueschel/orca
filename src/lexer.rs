@@ -17,6 +17,8 @@ pub enum Token {
     Slash,
     Plus,
     Minus,
+    LeftCaret,
+    RightCaret,
     ParenOpen,
     ParenClose,
     BracketOpen,
@@ -62,6 +64,8 @@ impl Lexer {
             '/' => Ok((Token::Slash, 1)),
             '+' => Ok((Token::Plus, 1)),
             '-' => Ok((Token::Minus, 1)),
+            '<' => Ok((Token::LeftCaret, 1)),
+            '>' => Ok((Token::RightCaret, 1)),
 
             c if c >= '0' && c <= '9' => Self::tokenize_number(slice),
             c @ '_' | c if c.is_alphabetic() => Self::tokenize_ident(slice),
