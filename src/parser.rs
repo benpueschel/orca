@@ -220,13 +220,13 @@ impl Parser {
     }
 
     fn parse_assignment_expression(&mut self) -> NodeResult {
-        let mut left = self.parse_add_expression()?;
+        let mut left = self.parse_comparison_expression()?;
         if left == Node::Semicolon {
             return Ok(left);
         }
         while self.peek_token()? == Token::Equal {
             let operator = self.eat_token()?;
-            let right = self.parse_add_expression()?;
+            let right = self.parse_comparison_expression()?;
             left = Node::BinaryExpr(BinaryExprData {
                 left: Box::new(left),
                 right: Box::new(right),
@@ -236,12 +236,12 @@ impl Parser {
         Ok(left)
     }
 
-    fn parse_comparision_expression(&mut self) -> NodeResult {
+    fn parse_comparison_expression(&mut self) -> NodeResult {
         let mut left = self.parse_add_expression()?;
         if left == Node::Semicolon {
             return Ok(left);
         }
-        while self.peek_token()? == Token::Equal {
+        while self.peek_token()? == Token::LeftCaret || self.peek_token()? == Token::RightCaret {
             let operator = self.eat_token()?;
             let right = self.parse_add_expression()?;
             left = Node::BinaryExpr(BinaryExprData {

@@ -51,7 +51,7 @@ mod test {
                 let x = 0; 
                 let y = 5 * x;
 
-                if(y - x) {
+                if(y < y) {
                     y = 3;
                 } else {
                     y = 6;

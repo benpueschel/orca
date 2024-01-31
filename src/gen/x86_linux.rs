@@ -1,4 +1,7 @@
-use std::{collections::{HashMap, VecDeque}, ops::AddAssign};
+use std::{
+    collections::{HashMap, VecDeque},
+    ops::AddAssign,
+};
 
 use crate::{
     ast::{BinaryExprData, FnDeclData, IfData, LetDeclData, Node, ProgramData, ReturnData},
@@ -82,7 +85,8 @@ impl<'a> LinuxX86Asm {
                 .register
                 .expect("could not allocate register");
 
-            self.output.append(format!("cmp $0, {}\n", Self::register_name(reg)));
+            self.output
+                .append(format!("cmp $0, {}\n", Self::register_name(reg)));
             self.register_free(reg);
 
             if data.else_body.len() > 0 {
@@ -259,6 +263,21 @@ impl<'a> LinuxX86Asm {
                     }
                 }
 
+                // comparison
+                match operator {
+                    Token::LeftCaret => {
+                        self.output += "setl %al";
+                        self.output += "andl $1, %al";
+                    }
+                    Token::RightCaret => {
+                        self.output
+                            .append(format!("setg {}\n", Self::register_name(left_reg)));
+                        self.output
+                            .append(format!("andq $1, {}\n", Self::register_name(left_reg)));
+                    }
+                    _ => {}
+                }
+
                 return Ok(GenNode {
                     node,
                     register: Some(left_reg),
@@ -314,6 +333,8 @@ impl Assembly for LinuxX86Asm {
 
     fn instruction_name(operator: &Token) -> &'static str {
         match operator {
+            Token::LeftCaret => "cmpq",
+            Token::RightCaret => "cmpq",
             Token::Plus => "addq",
             Token::Minus => "subq",
             Token::Star => "imul",
