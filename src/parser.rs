@@ -289,7 +289,6 @@ impl Parser {
 
     fn parse_primary_expression(&mut self) -> NodeResult {
         let token = self.eat_token()?;
-        println!("{:?}", &token);
         match token {
             Token::Identifier(x) => Ok(Node::Identifier(x)),
             Token::Integer(x) => Ok(Node::IntegerLiteral(x)),
