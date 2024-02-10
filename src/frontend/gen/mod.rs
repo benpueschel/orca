@@ -1,6 +1,6 @@
-use crate::ast::Node;
+use crate::frontend::ast::Node;
 use crate::target::TargetPlatform;
-use crate::{error::Error, lexer::Token};
+use crate::{error::Error, frontend::lexer::Token};
 
 use self::x86_linux::LinuxX86Asm;
 
@@ -35,7 +35,7 @@ trait Assembly {
 
 #[cfg(test)]
 mod test {
-    use crate::{
+    use crate::frontend::{
         gen::{create_code_generator, TargetPlatform::LinuxX86_64},
         lexer::Lexer,
         parser::Parser,

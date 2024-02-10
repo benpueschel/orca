@@ -4,18 +4,14 @@ use std::{
     path::Path,
 };
 
-use gen::create_code_generator;
 use structopt::StructOpt;
 use target::TargetPlatform;
 
-use crate::{lexer::Lexer, parser::Parser};
+use frontend::{lexer::Lexer, parser::Parser, gen::create_code_generator};
 
-pub mod ast;
-pub mod error;
-pub mod gen;
-pub mod lexer;
-pub mod parser;
 pub mod backend;
+pub mod error;
+pub mod frontend;
 pub mod target;
 
 #[derive(Debug, StructOpt)]
