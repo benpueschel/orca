@@ -58,9 +58,6 @@ fn main() -> io::Result<()> {
     let o_file = format!("{}/a.o", temp_dir);
     let out_file = format!("a.out");
 
-    // $ as -o hello.o hello.s
-    //$ ld -o hello -dynamic-linker /lib/ld-linux.so.2 /usr/lib/crt1.o /usr/lib/crti.o -lc hello.o /usr/lib/crtn.o
-
     std::fs::File::create(&asm_file)?.write_all(assembly.as_bytes())?;
 
     backend::assembler::assemble(target, &asm_file, &o_file)?;
