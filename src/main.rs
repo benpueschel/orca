@@ -5,8 +5,9 @@ use std::{
     process::{Command, ExitCode, ExitStatus, Output},
 };
 
-use gen::{create_code_generator, TargetPlatform};
+use gen::create_code_generator;
 use structopt::StructOpt;
+use target::TargetPlatform;
 
 use crate::{lexer::Lexer, parser::Parser};
 
@@ -15,6 +16,7 @@ pub mod error;
 pub mod gen;
 pub mod lexer;
 pub mod parser;
+pub mod target;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
