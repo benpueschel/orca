@@ -1,4 +1,4 @@
-use crate::lexer::Token;
+use crate::frontend::lexer::Token;
 
 // TODO: rethink Box<Node> - storing nodes on the heap isn't great.
 // use lifetimed reference?

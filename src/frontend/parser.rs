@@ -1,7 +1,9 @@
 use crate::{
-    ast::{BinaryExprData, FnDeclData, IfData, LetDeclData, Node, ProgramData, ReturnData},
     error::{Error, ErrorKind},
-    lexer::{Lexer, Token},
+    frontend::ast::{
+        BinaryExprData, FnDeclData, IfData, LetDeclData, Node, ProgramData, ReturnData,
+    },
+    frontend::lexer::{Lexer, Token},
 };
 
 macro_rules! unexpected_token {
@@ -310,7 +312,7 @@ impl Parser {
 #[cfg(test)]
 mod test {
     use super::Parser;
-    use crate::lexer::Lexer;
+    use crate::frontend::lexer::Lexer;
 
     #[test]
     fn test() {
