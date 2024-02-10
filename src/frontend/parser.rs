@@ -6,6 +6,8 @@ use crate::{
     frontend::lexer::{Lexer, Token},
 };
 
+use super::ast::Type;
+
 macro_rules! unexpected_token {
     ($x:tt) => {
         Error::new(
@@ -88,7 +90,12 @@ impl Parser {
         verify_next_token!(self, Token::ParenClose);
         let _ = self.eat_token()?;
 
-        // TODO: parse function return type
+        let return_type = if let Token::Colon = self.peek_token()? {
+            self.eat_token()?;
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
 
         verify_next_token!(self, Token::BracketOpen);
         let _ = self.eat_token()?;
@@ -96,7 +103,28 @@ impl Parser {
         let body = self.parse_block()?;
         let _ = self.eat_token()?; // eat the closing bracket
 
-        Ok(Node::FnDeclaration(FnDeclData { name, body }))
+        Ok(Node::FnDeclaration(FnDeclData {
+            name,
+            body,
+            return_type,
+        }))
+    }
+
+    fn parse_type(&mut self) -> Result<Type, Error> {
+        let ident = match self.eat_token()? {
+            Token::Identifier(x) => x,
+            x => {
+                return Err(Error::new(
+                    ErrorKind::UnexpectedToken,
+                    format!("unexpected token {:?}. expected identifier", x),
+                ));
+            }
+        };
+
+        Ok(match ident.as_ref() {
+            "usize" => Type::Usize,
+            _ => Type::Identifier(ident),
+        })
     }
 
     fn parse_block(&mut self) -> Result<Vec<Node>, Error> {
@@ -198,6 +226,16 @@ impl Parser {
 
         match self.eat_token()? {
             // TODO: check types
+            Token::Colon => {
+                let r#type = Some(self.parse_type()?);
+                let expr = if let Token::Equal = self.peek_token()? {
+                    self.eat_token()?;
+                    Some(Box::new(self.parse_expression()?))
+                } else {
+                    None
+                };
+                return Ok(Node::LetDeclaration(LetDeclData { name, expr, r#type }));
+            }
             Token::Semicolon => {
                 return Ok(Node::LetDeclaration(LetDeclData {
                     name,

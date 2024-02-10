@@ -18,6 +18,7 @@ pub enum Node {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Usize,
+    Identifier(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,6 +37,7 @@ pub struct ProgramData {
 pub struct FnDeclData {
     pub name: String,
     pub body: Vec<Node>,
+    pub return_type: Option<Type>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

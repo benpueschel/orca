@@ -24,6 +24,7 @@ pub enum Token {
     BracketOpen,
     BracketClose,
     Semicolon,
+    Colon,
     EOF,
     Invalid,
 }
@@ -53,6 +54,7 @@ impl Lexer {
         };
 
         let result = match next {
+            ':' => Ok((Token::Colon, 1)),
             ';' => Ok((Token::Semicolon, 1)),
             '=' => Ok((Token::Equal, 1)),
             '(' => Ok((Token::ParenOpen, 1)),

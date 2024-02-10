@@ -169,7 +169,7 @@ impl<'a> LinuxX86Asm {
     }
 
     fn func_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
-        if let Node::FnDeclaration(FnDeclData { name, body }) = node {
+        if let Node::FnDeclaration(FnDeclData { name, body, return_type: _ }) = node {
             self.idents_in_scope.push_front(HashMap::new());
             let fn_label = format!("{}", name);
             self.output.append(format!(".globl {}\n", &fn_label));
