@@ -2,7 +2,6 @@ use std::{
     fs::File,
     io::{self, BufRead, Write},
     path::Path,
-    process::{Command, ExitCode, ExitStatus, Output},
 };
 
 use gen::create_code_generator;
@@ -16,6 +15,7 @@ pub mod error;
 pub mod gen;
 pub mod lexer;
 pub mod parser;
+pub mod backend;
 pub mod target;
 
 #[derive(Debug, StructOpt)]
@@ -30,11 +30,15 @@ struct Options {
 
 fn main() -> io::Result<()> {
     let opt = Options::from_args();
+
     let file = read_lines(opt.file)?;
     let mut input = String::new();
     for line in file.flatten() {
         input += &line;
     }
+
+    // TODO: parse target platform from options
+    let target = TargetPlatform::LinuxX86_64;
 
     // TODO: parse tree on demand - we'd need to pass the BufReader down to the lexer
     let lexer = Lexer::new(input);
@@ -45,7 +49,7 @@ fn main() -> io::Result<()> {
         Err(x) => panic!("{:?}", x),
     };
 
-    let mut generator = create_code_generator(TargetPlatform::LinuxX86_64);
+    let mut generator = create_code_generator(target);
     let assembly = match generator.generate_assembly(&ast) {
         Ok(x) => x,
         Err(x) => panic!("{:?}", x),
@@ -62,44 +66,13 @@ fn main() -> io::Result<()> {
     //$ ld -o hello -dynamic-linker /lib/ld-linux.so.2 /usr/lib/crt1.o /usr/lib/crti.o -lc hello.o /usr/lib/crtn.o
 
     std::fs::File::create(&asm_file)?.write_all(assembly.as_bytes())?;
-    process_output(
-        Command::new("as")
-            .args(["-o", &o_file, &asm_file])
-            .output()?,
-    );
-    process_output(
-        Command::new("ld")
-            .args([
-                "-o",
-                &out_file,
-                "-dynamic-linker",
-                "/lib64/ld-linux-x86-64.so.2",
-                "/usr/lib/crt1.o",
-                "/usr/lib/crti.o",
-                "-lc",
-                &o_file,
-                "/usr/lib/crtn.o",
-            ])
-            .output()?,
-    );
+
+    backend::assembler::assemble(target, &asm_file, &o_file)?;
+    backend::linker::link(target, &o_file, &out_file)?;
 
     std::fs::remove_dir_all(temp_dir)?;
 
     Ok(())
-}
-
-fn process_output(output: Output) {
-    if output.status.success() {
-        println!(
-            "{}",
-            String::from_utf8(output.stdout).expect("could not parse stdout")
-        );
-    } else {
-        println!(
-            "{}",
-            String::from_utf8(output.stderr).expect("could not parse stderr")
-        );
-    }
 }
 
 // The output is wrapped in a Result to allow matching on errors.
