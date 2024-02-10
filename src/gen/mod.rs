@@ -1,4 +1,5 @@
 use crate::ast::Node;
+use crate::target::TargetPlatform;
 use crate::{error::Error, lexer::Token};
 
 use self::x86_linux::LinuxX86Asm;
@@ -6,10 +7,6 @@ use self::x86_linux::LinuxX86Asm;
 pub mod x86_linux;
 
 pub type Register = u8;
-
-pub enum TargetPlatform {
-    LinuxX86_64,
-}
 
 pub fn create_code_generator<'a>(target: TargetPlatform) -> Box<dyn CodeGenerator<'a>> {
     match target {
