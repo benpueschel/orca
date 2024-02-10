@@ -90,7 +90,7 @@ impl<'a> LinuxX86Asm {
             self.register_free(reg);
 
             if data.else_body.len() > 0 {
-                self.output.append(format!("jeq {}_ELSE\n", label));
+                self.output.append(format!("je {}_ELSE\n", label));
             }
             for statement in &data.body {
                 self.node_gen(&statement)?;
@@ -169,8 +169,9 @@ impl<'a> LinuxX86Asm {
     fn func_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         if let Node::FnDeclaration(FnDeclData { name, body }) = node {
             self.idents_in_scope.push_front(HashMap::new());
-            let fn_label = format!("_{}:\n", name);
-            self.output += &fn_label;
+            let fn_label = format!("{}", name);
+            self.output.append(format!(".globl {}\n", &fn_label));
+            self.output.append(format!("{}:\n", &fn_label));
 
             self.output += "pushq %rbp\n"; // set up new stack frame
             self.output += "movq %rsp, %rbp\n";
@@ -266,14 +267,12 @@ impl<'a> LinuxX86Asm {
                 // comparison
                 match operator {
                     Token::LeftCaret => {
-                        self.output += "setl %al";
-                        self.output += "andl $1, %al";
+                        self.output += "setl %al\n";
+                        self.output += "andb $1, %al\n";
                     }
                     Token::RightCaret => {
-                        self.output
-                            .append(format!("setg {}\n", Self::register_name(left_reg)));
-                        self.output
-                            .append(format!("andq $1, {}\n", Self::register_name(left_reg)));
+                        self.output += "setg %al\n";
+                        self.output += "andb $1, %al\n";
                     }
                     _ => {}
                 }
