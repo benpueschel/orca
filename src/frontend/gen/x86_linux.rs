@@ -3,14 +3,15 @@ use std::{
     ops::AddAssign,
 };
 
-use crate::{
-    error::{Error, ErrorKind},
-    option_unwrap,
-};
 use crate::frontend::{
     ast::{BinaryExprData, FnDeclData, Node, ProgramData, ReturnData},
     gen::Assembly,
     lexer::Token,
+};
+use crate::{
+    error::{Error, ErrorKind},
+    frontend::ast::Type,
+    option_unwrap,
 };
 
 trait StringAppend {
@@ -27,12 +28,17 @@ use super::{CodeGenerator, GenNode, Register};
 
 const REGISTER_SIZE: usize = 6;
 
+struct Variable {
+    r#type: Type,
+    mem_position: String,
+}
+
 pub struct LinuxX86Asm {
     registers: [bool; REGISTER_SIZE],
     current_label: usize,
     output: String,
     stack_offset: usize,
-    idents_in_scope: VecDeque<HashMap<String, String>>,
+    idents_in_scope: VecDeque<HashMap<String, Variable>>,
 }
 
 impl<'a> CodeGenerator<'a> for LinuxX86Asm {
@@ -49,6 +55,13 @@ impl<'a> CodeGenerator<'a> for LinuxX86Asm {
     }
 }
 
+fn eval_type_size(r#type: &Type) -> usize {
+    match r#type {
+        Type::Usize => 8,
+        Type::Identifier(_) => panic!("custom types are not supported")
+    }
+}
+
 impl<'a> LinuxX86Asm {
     pub fn new() -> Self {
         LinuxX86Asm {
@@ -60,7 +73,7 @@ impl<'a> LinuxX86Asm {
         }
     }
 
-    fn node_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
+    fn node_gen(&'a mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         // debug only
         self.output += "\n";
 
@@ -143,11 +156,18 @@ impl<'a> LinuxX86Asm {
 
     fn let_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         if let Node::LetDeclaration(data) = node {
-            // TODO: evaluate actual type size instead of forcing type i64
-            self.stack_offset += 8;
+            let r#type = data.r#type.clone().expect("type inference is not supported yet.");
+            self.stack_offset += eval_type_size(&r#type);
+
             let stack_pos = format!("-{}(%rbp)", self.stack_offset);
             let current_scope = &mut self.idents_in_scope[0];
-            current_scope.insert(data.name.clone(), stack_pos.clone());
+            current_scope.insert(
+                data.name.clone(),
+                Variable {
+                    r#type,
+                    mem_position: stack_pos.clone(),
+                },
+            );
 
             if let Some(expr) = &data.expr {
                 if let Some(reg) = self.expr_gen(expr)?.register {
@@ -169,7 +189,12 @@ impl<'a> LinuxX86Asm {
     }
 
     fn func_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
-        if let Node::FnDeclaration(FnDeclData { name, body, return_type: _ }) = node {
+        if let Node::FnDeclaration(FnDeclData {
+            name,
+            body,
+            return_type: _,
+        }) = node
+        {
             self.idents_in_scope.push_front(HashMap::new());
             let fn_label = format!("{}", name);
             self.output.append(format!(".globl {}\n", &fn_label));
@@ -197,10 +222,10 @@ impl<'a> LinuxX86Asm {
         ))
     }
 
-    fn find_var_in_scope(&mut self, value: &str) -> Result<String, Error> {
+    fn find_var_in_scope(&'a mut self, value: &str) -> Result<&'a Variable, Error> {
         for scope in &self.idents_in_scope {
             if let Some(address) = scope.get(value) {
-                return Ok(address.clone());
+                return Ok(&address);
             }
         }
         Err(Error::new(
@@ -209,7 +234,7 @@ impl<'a> LinuxX86Asm {
         ))
     }
 
-    fn expr_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
+    fn expr_gen(&'a mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         match node {
             Node::IntegerLiteral(value) => {
                 let register = self.register_alloc()?;
@@ -223,10 +248,12 @@ impl<'a> LinuxX86Asm {
                 });
             }
             Node::Identifier(value) => {
-                let address = self.find_var_in_scope(value)?;
                 let register = self.register_alloc()?;
-                let move_instruction =
-                    format!("movq {}, {}\n", address, Self::register_name(register));
+                let move_instruction = format!(
+                    "movq {}, {}\n",
+                    self.find_var_in_scope(value)?.mem_position,
+                    Self::register_name(register)
+                );
                 self.output += &move_instruction;
 
                 return Ok(GenNode {
@@ -259,7 +286,7 @@ impl<'a> LinuxX86Asm {
                         let move_to_stack = format!(
                             "movq {}, {}\n",
                             Self::register_name(left_reg),
-                            self.find_var_in_scope(value)?
+                            self.find_var_in_scope(value)?.mem_position
                         );
                         self.output += &move_to_stack;
                         self.register_free(left_reg);
