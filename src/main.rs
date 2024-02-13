@@ -22,6 +22,8 @@ pub mod target;
 struct Options {
     #[structopt(short, long)]
     file: String,
+    #[structopt(long)]
+    print_assembly: bool,
 }
 
 fn main() -> io::Result<()> {
@@ -51,19 +53,23 @@ fn main() -> io::Result<()> {
         Err(x) => panic!("{:?}", x),
     };
 
-    let temp_dir = ".orca.tmp";
-    std::fs::create_dir(temp_dir)?;
+    if opt.print_assembly {
+        println!("{}", assembly);
+    } else {
+        let temp_dir = ".orca.tmp";
+        std::fs::create_dir(temp_dir)?;
 
-    let asm_file = format!("{}/a.a", temp_dir);
-    let o_file = format!("{}/a.o", temp_dir);
-    let out_file = format!("a.out");
+        let asm_file = format!("{}/a.a", temp_dir);
+        let o_file = format!("{}/a.o", temp_dir);
+        let out_file = format!("a.out");
 
-    std::fs::File::create(&asm_file)?.write_all(assembly.as_bytes())?;
+        std::fs::File::create(&asm_file)?.write_all(assembly.as_bytes())?;
 
-    backend::assembler::assemble(target, &asm_file, &o_file)?;
-    backend::linker::link(target, &o_file, &out_file)?;
+        backend::assembler::assemble(target, &asm_file, &o_file)?;
+        backend::linker::link(target, &o_file, &out_file)?;
 
-    std::fs::remove_dir_all(temp_dir)?;
+        std::fs::remove_dir_all(temp_dir)?;
+    }
 
     Ok(())
 }
