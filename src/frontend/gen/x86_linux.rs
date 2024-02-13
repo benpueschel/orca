@@ -27,6 +27,7 @@ impl StringAppend for String {
 use super::{CodeGenerator, GenNode, Register};
 
 const REGISTER_SIZE: usize = 6;
+const TOTAL_REGISTERS: usize = REGISTER_SIZE * 4;
 
 struct Variable {
     r#type: Type,
@@ -34,7 +35,7 @@ struct Variable {
 }
 
 pub struct LinuxX86Asm {
-    registers: [bool; REGISTER_SIZE],
+    registers: [bool; TOTAL_REGISTERS],
     current_label: usize,
     output: String,
     stack_offset: usize,
@@ -55,17 +56,33 @@ impl<'a> CodeGenerator<'a> for LinuxX86Asm {
     }
 }
 
-fn eval_type_size(r#type: &Type) -> usize {
+fn eval_type_size(r#type: Type) -> usize {
     match r#type {
         Type::Usize => 8,
-        Type::Identifier(_) => panic!("custom types are not supported")
+        Type::U32 => 4,
+        Type::Identifier(_) => panic!("custom types are not supported"),
+    }
+}
+
+fn eval_reg_size(reg: Register) -> usize {
+    // FIXME: ugly. really ugly. i cannot overstate just how ugly this all is.
+    return (2 as usize).pow(3 - reg as u32 / REGISTER_SIZE as u32);
+}
+
+fn eval_move_instruction(reg: Register) -> &'static str {
+    match eval_reg_size(reg) {
+        1 => "movb",
+        2 => "movw",
+        4 => "movl",
+        8 => "movq",
+        x => panic!("{} is not a valid register size.", x),
     }
 }
 
 impl<'a> LinuxX86Asm {
     pub fn new() -> Self {
         LinuxX86Asm {
-            registers: [false; REGISTER_SIZE],
+            registers: [false; TOTAL_REGISTERS],
             current_label: 0,
             output: String::new(),
             stack_offset: 0,
@@ -134,7 +151,19 @@ impl<'a> LinuxX86Asm {
         if let Node::ReturnStatement(ReturnData { expr }) = node {
             if let Some(x) = expr {
                 if let Some(reg) = self.expr_gen(x)?.register {
-                    let instruction = format!("movq {}, %rax\n", Self::register_name(reg));
+                    let return_reg = match eval_reg_size(reg) {
+                        8 => "%rax",
+                        4 => "%eax",
+                        2 => "%ax",
+                        1 => "%al",
+                        x => panic!("oh no, reg size invalid. you made groggo sad :("),
+                    };
+                    let instruction = format!(
+                        "{} {}, {}\n",
+                        eval_move_instruction(reg),
+                        Self::register_name(reg),
+                        return_reg
+                    );
                     self.output += &instruction;
                 }
             }
@@ -156,8 +185,11 @@ impl<'a> LinuxX86Asm {
 
     fn let_gen(&mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         if let Node::LetDeclaration(data) = node {
-            let r#type = data.r#type.clone().expect("type inference is not supported yet.");
-            self.stack_offset += eval_type_size(&r#type);
+            let r#type = data
+                .r#type
+                .clone()
+                .expect("type inference is not supported yet.");
+            self.stack_offset += eval_type_size(r#type.clone());
 
             let stack_pos = format!("-{}(%rbp)", self.stack_offset);
             let current_scope = &mut self.idents_in_scope[0];
@@ -171,8 +203,12 @@ impl<'a> LinuxX86Asm {
 
             if let Some(expr) = &data.expr {
                 if let Some(reg) = self.expr_gen(expr)?.register {
-                    let move_to_stack =
-                        format!("movq {}, {}\n", Self::register_name(reg), stack_pos);
+                    let move_to_stack = format!(
+                        "{} {}, {}\n",
+                        eval_move_instruction(reg),
+                        Self::register_name(reg),
+                        stack_pos
+                    );
                     self.output += &move_to_stack;
                     self.register_free(reg);
                 }
@@ -222,7 +258,7 @@ impl<'a> LinuxX86Asm {
         ))
     }
 
-    fn find_var_in_scope(&'a mut self, value: &str) -> Result<&'a Variable, Error> {
+    fn find_var_in_scope(&'a self, value: &str) -> Result<&'a Variable, Error> {
         for scope in &self.idents_in_scope {
             if let Some(address) = scope.get(value) {
                 return Ok(&address);
@@ -237,9 +273,17 @@ impl<'a> LinuxX86Asm {
     fn expr_gen(&'a mut self, node: &'a Node) -> Result<GenNode<'a>, Error> {
         match node {
             Node::IntegerLiteral(value) => {
-                let register = self.register_alloc()?;
-                let move_instruction =
-                    format!("movq ${}, {}\n", value, Self::register_name(register));
+                // FIXME: infer type, else everything crumbles into pieces. this currently does not
+                // support u32, unless you specifically set the integer literals to use 32 bit
+                // registers, in which case usize doesn't work. so you also can't mix types
+                // together (which makes sense because we haven't implemented casting either)
+                let register = self.register_alloc(8)?;
+                let move_instruction = format!(
+                    "{} ${}, {}\n",
+                    eval_move_instruction(register),
+                    value,
+                    Self::register_name(register)
+                );
                 self.output += &move_instruction;
 
                 return Ok(GenNode {
@@ -248,10 +292,15 @@ impl<'a> LinuxX86Asm {
                 });
             }
             Node::Identifier(value) => {
-                let register = self.register_alloc()?;
+                // FIXME: incredibly ugly, the cloning madness is only
+                // done to satisfy the borrow checker
+                let var = self.find_var_in_scope(value)?;
+                let mem_position = var.mem_position.clone();
+                let register = self.register_alloc(eval_type_size(var.r#type.clone()))?;
                 let move_instruction = format!(
-                    "movq {}, {}\n",
-                    self.find_var_in_scope(value)?.mem_position,
+                    "{} {}, {}\n",
+                    eval_move_instruction(register),
+                    mem_position,
                     Self::register_name(register)
                 );
                 self.output += &move_instruction;
@@ -269,12 +318,13 @@ impl<'a> LinuxX86Asm {
                 // NOTE: we want to store our result in left_reg because of assignments, where
                 // the result of the right node should be moved into the left node, so we flip
                 // the left and right registers around in the actual instruction
-                let left_reg = option_unwrap!(self.expr_gen(left)?.register, "left_reg is None");
+                let mut left_reg =
+                    option_unwrap!(self.expr_gen(left)?.register, "left_reg is None");
                 let right_reg = option_unwrap!(self.expr_gen(right)?.register, "right_reg is None");
 
                 let instruction = format!(
                     "{} {}, {}\n",
-                    Self::instruction_name(operator),
+                    Self::instruction_name(operator, eval_reg_size(left_reg)),
                     Self::register_name(right_reg),
                     Self::register_name(left_reg),
                 );
@@ -284,7 +334,8 @@ impl<'a> LinuxX86Asm {
                 if let Token::Equal = operator {
                     if let Node::Identifier(value) = left.as_ref() {
                         let move_to_stack = format!(
-                            "movq {}, {}\n",
+                            "{} {}, {}\n",
+                            eval_move_instruction(left_reg),
                             Self::register_name(left_reg),
                             self.find_var_in_scope(value)?.mem_position
                         );
@@ -296,12 +347,16 @@ impl<'a> LinuxX86Asm {
                 // comparison
                 match operator {
                     Token::LeftCaret => {
-                        self.output += "setl %al\n";
-                        self.output += "andb $1, %al\n";
+                        left_reg = self.register_alloc(1)?;
+                        let reg = Self::register_name(left_reg);
+                        self.output.append(format!("setl {}\n", reg));
+                        self.output.append(format!("andb $1, {}\n", reg));
                     }
                     Token::RightCaret => {
-                        self.output += "setg %al\n";
-                        self.output += "andb $1, %al\n";
+                        left_reg = self.register_alloc(1)?;
+                        let reg = Self::register_name(left_reg);
+                        self.output.append(format!("setg {}\n", reg));
+                        self.output.append(format!("andb $1, {}\n", reg));
                     }
                     _ => {}
                 }
@@ -322,8 +377,21 @@ impl<'a> LinuxX86Asm {
 }
 
 impl Assembly for LinuxX86Asm {
-    fn register_alloc(&mut self) -> Result<Register, Error> {
-        for i in 0..REGISTER_SIZE {
+    fn register_alloc(&mut self, type_size: usize) -> Result<Register, Error> {
+        let start = match type_size {
+            8 => (REGISTER_SIZE + 1) * 0,
+            4 => (REGISTER_SIZE + 1) * 1,
+            2 => (REGISTER_SIZE + 1) * 2,
+            1 => (REGISTER_SIZE + 1) * 3,
+            _ => {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    format!("{} is not a valid register size", type_size),
+                ))
+            }
+        };
+        let end = start + REGISTER_SIZE;
+        for i in start..end {
             if !self.registers[i] {
                 self.registers[i] = true;
                 return Ok(i as Register);
@@ -331,16 +399,16 @@ impl Assembly for LinuxX86Asm {
         }
         return Err(Error::new(
             ErrorKind::RegisterOverflow,
-            "all registers are in use",
+            format!("all registers of size {} are in use", type_size),
         ));
     }
 
     fn register_free(&mut self, reg: Register) {
         assert!(
-            reg < REGISTER_SIZE as Register,
+            reg < TOTAL_REGISTERS as Register,
             "reg {} out of bounds. max value is {}",
             reg,
-            REGISTER_SIZE
+            TOTAL_REGISTERS,
         );
 
         self.registers[reg as usize] = false;
@@ -355,20 +423,77 @@ impl Assembly for LinuxX86Asm {
             4 => "%r13",
             5 => "%r14",
             6 => "%r15",
+
+            7 => "%ebx",
+            8 => "%r10d",
+            9 => "%r11d",
+            10 => "%r12d",
+            11 => "%r13d",
+            12 => "%r14d",
+            13 => "%r15d",
+
+            14 => "%bx",
+            15 => "%r10w",
+            16 => "%r11w",
+            17 => "%r12w",
+            18 => "%r13w",
+            19 => "%r14w",
+            20 => "%r15w",
+
+            21 => "%bl",
+            22 => "%r10b",
+            23 => "%r11b",
+            24 => "%r12b",
+            25 => "%r13b",
+            26 => "%r14b",
+            27 => "%r15b",
             _ => panic!("reg idex {} out of bounds", reg),
         }
     }
 
-    fn instruction_name(operator: &Token) -> &'static str {
-        match operator {
-            Token::LeftCaret => "cmpq",
-            Token::RightCaret => "cmpq",
-            Token::Plus => "addq",
-            Token::Minus => "subq",
-            Token::Star => "imul",
-            Token::Slash => "idiv",
-            Token::Equal => "movq",
-            _ => panic!("unexpected token"),
+    fn instruction_name(operator: &Token, type_size: usize) -> &'static str {
+        match type_size {
+            1 => match operator {
+                Token::LeftCaret => "cmpb",
+                Token::RightCaret => "cmpb",
+                Token::Plus => "addb",
+                Token::Minus => "subb",
+                Token::Star => "imulb",
+                Token::Slash => "idivb",
+                Token::Equal => "movb",
+                _ => panic!("unexpected token"),
+            },
+            2 => match operator {
+                Token::LeftCaret => "cmpw",
+                Token::RightCaret => "cmpw",
+                Token::Plus => "addw",
+                Token::Minus => "subw",
+                Token::Star => "imulw",
+                Token::Slash => "idivw",
+                Token::Equal => "movw",
+                _ => panic!("unexpected token"),
+            },
+            4 => match operator {
+                Token::LeftCaret => "cmpl",
+                Token::RightCaret => "cmpl",
+                Token::Plus => "addl",
+                Token::Minus => "subl",
+                Token::Star => "imull",
+                Token::Slash => "idivl",
+                Token::Equal => "movl",
+                _ => panic!("unexpected token"),
+            },
+            8 => match operator {
+                Token::LeftCaret => "cmpq",
+                Token::RightCaret => "cmpq",
+                Token::Plus => "addq",
+                Token::Minus => "subq",
+                Token::Star => "imulq",
+                Token::Slash => "idivq",
+                Token::Equal => "movq",
+                _ => panic!("unexpected token"),
+            },
+            x => panic!("{} is not a valid register size.", x),
         }
     }
 

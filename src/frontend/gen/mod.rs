@@ -24,13 +24,13 @@ struct GenNode<'a> {
 }
 
 trait Assembly {
-    fn register_alloc(&mut self) -> Result<Register, Error>;
+    fn register_alloc(&mut self, type_size: usize) -> Result<Register, Error>;
     fn register_free(&mut self, reg: Register);
     fn register_name(reg: Register) -> &'static str;
 
     fn label_create(&mut self) -> usize;
     fn label_name(label: usize) -> String;
-    fn instruction_name(operator: &Token) -> &'static str;
+    fn instruction_name(operator: &Token, type_size: usize) -> &'static str;
 }
 
 #[cfg(test)]

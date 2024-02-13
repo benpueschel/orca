@@ -123,6 +123,7 @@ impl Parser {
 
         Ok(match ident.as_ref() {
             "usize" => Type::Usize,
+            "u32" => Type::U32,
             _ => Type::Identifier(ident),
         })
     }

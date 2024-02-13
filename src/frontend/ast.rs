@@ -18,6 +18,7 @@ pub enum Node {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Usize,
+    U32,
     Identifier(String),
 }
 
