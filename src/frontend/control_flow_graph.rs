@@ -1,4 +1,4 @@
-use super::ast::{self, IfData, Node};
+use super::ast::{FnDeclData, IfData, Node, NodeType};
 
 type GraphNodeIndex = usize;
 
@@ -67,15 +67,22 @@ impl CFGraph {
             }
         }
         let mut branches = match parent_block {
-            Some(x) => vec![x],
-            None => vec![self.alloc_node(CFNode::End)],
+            Some(x) => {
+                vec![x]
+            }
+            None => {
+                vec![self.alloc_node(CFNode::End)]
+            }
         };
         if let Some(branching_node) = nodes.last_mut() {
             if Self::is_node_branching(branching_node) {
-                branches = self.parse_branches(branching_node, body, parent_block)
+                branches = self.parse_branches(branching_node, body, parent_block);
             }
         }
-        self.alloc_node(CFNode::Node { nodes, branches })
+        self.alloc_node(CFNode::Node {
+            nodes,
+            branches,
+        })
     }
 
     fn parse_branches(
@@ -84,9 +91,12 @@ impl CFGraph {
         next_nodes: &mut Vec<Node>,
         parent_block: Option<GraphNodeIndex>,
     ) -> Vec<GraphNodeIndex> {
-        match branching_node {
-            Node::IfStatement(ref mut data) => {
+        match branching_node.node_type {
+            NodeType::IfStatement(ref mut data) => {
                 self.parse_if_statement(data, next_nodes, parent_block)
+            }
+            NodeType::FnDeclaration(ref mut data) => {
+                self.parse_fn_declaration(data, next_nodes, parent_block)
             }
             _ => panic!("node is not a branch"),
         }
@@ -114,9 +124,27 @@ impl CFGraph {
         nodes
     }
 
+    fn parse_fn_declaration(
+        &mut self,
+        data: &mut FnDeclData,
+        next_nodes: &mut Vec<Node>,
+        parent_block: Option<GraphNodeIndex>,
+    ) -> Vec<GraphNodeIndex> {
+        let mut nodes = vec![];
+        let next_block = self.parse_block(next_nodes, parent_block);
+
+        if !data.body.is_empty() {
+            nodes.push(self.parse_block(&mut data.body, Some(next_block)));
+        } else {
+            nodes.push(next_block);
+        }
+        nodes
+    }
+
     fn is_node_branching(node: &Node) -> bool {
-        match node {
-            Node::IfStatement(_) => true,
+        match node.node_type {
+            NodeType::IfStatement(_) => true,
+            NodeType::FnDeclaration(_) => true,
             _ => false,
         }
     }
