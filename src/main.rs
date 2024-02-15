@@ -4,10 +4,13 @@ use std::{
     path::Path,
 };
 
+use backend::gen::{x86_linux, CodeGenerator};
 use structopt::StructOpt;
 use target::TargetPlatform;
 
-use frontend::{lexer::Lexer, parser::Parser, gen::create_code_generator};
+use frontend::{ast::NodeType, lexer::Lexer, parser::Parser};
+
+use crate::{backend::gen::x86_linux::codegen::generate_code, frontend::control_flow_graph::CFGraph};
 
 pub mod backend;
 pub mod error;
@@ -47,11 +50,8 @@ fn main() -> io::Result<()> {
         Err(x) => panic!("{:?}", x),
     };
 
-    let mut generator = create_code_generator(target);
-    let assembly = match generator.generate_assembly(&ast) {
-        Ok(x) => x,
-        Err(x) => panic!("{:?}", x),
-    };
+    let generator = x86_linux::X86Linux::new(ast);
+    let assembly = generate_code(generator.nodes);
 
     if opt.print_assembly {
         println!("{}", assembly);
