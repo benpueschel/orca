@@ -1,5 +1,3 @@
-use super::Graph;
-
 pub const REGISTER_SIZE: Register = 7;
 pub const ALL_REGISTERS_ALLOCATED: Register = 2 * (1 << (REGISTER_SIZE - 1)) - 1;
 

@@ -74,6 +74,7 @@ impl CodeGenerator for X86Linux {
 }
 
 impl X86Linux {
+    #[allow(unused)]
     fn gen_cf_node(&mut self, node_index: GraphNodeIndex, graph: &CFGraph) -> Vec<AssemblyNode> {
         let node = graph.get_node(node_index);
         match node {

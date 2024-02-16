@@ -268,9 +268,7 @@ impl Iterator for Lexer {
 
 #[cfg(test)]
 mod tests {
-    use crate::frontend::lexer::TokenType;
-
-    use super::{Lexer, Token};
+    use super::{Lexer, TokenType};
     macro_rules! token_eq {
         { $x:expr,$y:expr } => {
             match $x {

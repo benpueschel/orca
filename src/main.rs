@@ -8,9 +8,9 @@ use backend::gen::{x86_linux, CodeGenerator};
 use structopt::StructOpt;
 use target::TargetPlatform;
 
-use frontend::{ast::NodeType, lexer::Lexer, parser::Parser};
+use frontend::{lexer::Lexer, parser::Parser};
 
-use crate::{backend::gen::x86_linux::codegen::generate_code, frontend::control_flow_graph::CFGraph};
+use crate::backend::gen::x86_linux::codegen::generate_code;
 
 pub mod backend;
 pub mod error;

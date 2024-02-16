@@ -1,4 +1,4 @@
-use crate::frontend::{ast::{Node, Type}, control_flow_graph::CFGraph};
+use crate::frontend::ast::{Node, Type};
 
 use self::x86_linux::assembly_node::Expression;
 

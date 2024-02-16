@@ -346,27 +346,6 @@ impl Parser {
         Ok(left)
     }
 
-    fn parse_expr(&mut self, filter: fn() -> bool, func: fn() -> NodeResult) -> NodeResult {
-        let mut left = func()?;
-        if let NodeType::Semicolon = left.node_type {
-            return Ok(left);
-        }
-        while filter() {
-            let operator = self.eat_token()?;
-            let right = func()?;
-            let span = (left.span.0, right.span.1);
-            left = Node {
-                node_type: NodeType::BinaryExpr(BinaryExprData {
-                    left: Box::new(left),
-                    right: Box::new(right),
-                    operator,
-                }),
-                span,
-            };
-        }
-        Ok(left)
-    }
-
     fn parse_primary_expression(&mut self) -> NodeResult {
         let token = self.eat_token()?;
         match token.token_type {
