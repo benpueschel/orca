@@ -74,27 +74,6 @@ impl CodeGenerator for X86Linux {
 }
 
 impl X86Linux {
-    #[allow(unused)]
-    fn gen_cf_node(&mut self, node_index: GraphNodeIndex, graph: &CFGraph) -> Vec<AssemblyNode> {
-        let node = graph.get_node(node_index);
-        match node {
-            CFNode::Start { next_node } => self.gen_cf_node(*next_node, graph),
-            CFNode::Node { nodes, branches } => {
-                if self.processed_nodes.contains(&node_index) {
-                    return vec![];
-                }
-                self.processed_nodes.push(node_index);
-
-                let mut instructions = self.process_nodes(nodes);
-                for branch in branches {
-                    instructions.append(&mut self.gen_cf_node(*branch, graph));
-                }
-                instructions
-            }
-            CFNode::End => vec![],
-        }
-    }
-
     fn process_nodes(&mut self, nodes: &Vec<Node>) -> Vec<AssemblyNode> {
         let mut nodes = VecDeque::from(nodes.clone());
         let mut assembly_nodes = vec![];
