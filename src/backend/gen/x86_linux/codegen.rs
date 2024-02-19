@@ -23,7 +23,8 @@ pub fn generate_code(nodes: Vec<AssemblyNode>) -> String {
                 if let Expression::None = node.left {
                     code.push_str(&format!("{}\n", instruction_name));
                     continue;
-                } else if let Expression::None = node.right {
+                } 
+                if let Expression::None = node.right {
                     code.push_str(&format!(
                         "{} {}\n",
                         instruction_name,

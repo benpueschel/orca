@@ -1,11 +1,7 @@
-use crate::{
-    frontend::{
-        ast::{self, NodeType},
-        ir::{BasicBlock, Ir, Scope, Statement, Terminator, TerminatorKind},
-    },
-    span::Span,
+use crate::frontend::{
+    ast::{self, NodeType},
+    ir::{BasicBlock, Ir, Scope, Statement, Terminator, TerminatorKind},
 };
-use crate::frontend::ir::BasicBlockData;
 
 pub struct Branch {
     pub terminator: Terminator,

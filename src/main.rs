@@ -8,7 +8,7 @@ use backend::gen::{x86_linux, CodeGenerator};
 use structopt::StructOpt;
 use target::TargetPlatform;
 
-use frontend::{lexer::Lexer, parser::Parser};
+use frontend::{ast::NodeType, ir, lexer::Lexer, parser::Parser};
 
 use crate::backend::gen::x86_linux::codegen::generate_code;
 
@@ -16,6 +16,7 @@ pub mod backend;
 pub mod error;
 pub mod frontend;
 pub mod target;
+pub mod span;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -43,12 +44,28 @@ fn main() -> io::Result<()> {
 
     // TODO: parse tree on demand - we'd need to pass the BufReader down to the lexer
     let lexer = Lexer::new(input);
+    for token in lexer.clone() {
+        println!("{:?}", token);
+    }
+
     let mut parser = Parser::new(lexer);
+
 
     let ast = match parser.produce_ast() {
         Ok(x) => x,
         Err(x) => panic!("{:?}", x),
     };
+
+    // println!("{:#?}", ast);
+
+    if let NodeType::Program(data) = ast.clone().node_type {
+        for node in data.body {
+            if let NodeType::FnDeclaration(data) = node.node_type {
+                let ir = ir::build::Builder::build(data, node.span.into());
+                println!("{}", ir);
+            }
+        }
+    }
 
     let generator = x86_linux::X86Linux::new(ast);
     let assembly = generate_code(generator.nodes);
