@@ -1,9 +1,10 @@
 use crate::{
     error::{Error, ErrorKind},
-    frontend::ast::{
-        BinaryExprData, FnDeclData, IfData, LetDeclData, Node, ProgramData, ReturnData,
+    frontend::{
+        ast::{BinaryExprData, FnDeclData, IfData, LetDeclData, Node, ProgramData, ReturnData},
+        lexer::{Lexer, Token},
     },
-    frontend::lexer::{Lexer, Token},
+    span::Span,
 };
 
 use super::{
@@ -56,9 +57,18 @@ impl Parser {
             body.push(self.parse_declaration()?)
         }
 
+        let empty_node = Node {
+            node_type: NodeType::Semicolon,
+            span: Span::empty(),
+        };
+        let span = Span::compose(
+            body.first().unwrap_or(&empty_node).span,
+            body.first().unwrap_or(&empty_node).span,
+        );
+
         Ok(Node {
             node_type: NodeType::Program(ProgramData { body }),
-            span: (0, 0),
+            span,
         })
     }
 
@@ -106,7 +116,7 @@ impl Parser {
 
         Ok(Node {
             node_type: NodeType::FnDeclaration(FnDeclData { name, body }),
-            span: (first_token.span.0, last_token.span.1),
+            span: Span::compose(first_token.span, last_token.span),
         })
     }
 
@@ -180,7 +190,7 @@ impl Parser {
                 body,
                 else_body,
             }),
-            span: (first_token.span.0, last_token.span.1),
+            span: Span::compose(first_token.span, last_token.span),
         })
     }
 
@@ -191,13 +201,13 @@ impl Parser {
         let last_pos;
         let expr = match self.peek_token()?.token_type {
             TokenType::Semicolon => {
-                last_pos = self.eat_token()?.span.1;
+                last_pos = self.eat_token()?.span;
                 None
             }
             TokenType::Equal => return Err(unexpected_token!("Equal")),
             _ => {
                 let expr = self.parse_expression()?;
-                last_pos = expr.span.1;
+                last_pos = expr.span;
                 Some(Box::new(expr))
             }
         };
@@ -207,7 +217,7 @@ impl Parser {
                 expr,
                 fn_name: "main".into(), // TODO: find function name
             }),
-            span: (first_token.span.0, last_pos),
+            span: Span::compose(first_token.span, last_pos),
         })
     }
 
@@ -231,7 +241,7 @@ impl Parser {
                         expr: None,
                         r#type: None,
                     }),
-                    span: (first_token.span.0, last_token.span.1),
+                    span: Span::compose(first_token.span, last_token.span),
                 })
             }
             TokenType::Equal => {
@@ -239,7 +249,7 @@ impl Parser {
                 match expr {
                     x if x.node_type == NodeType::Semicolon => Err(unexpected_token!("Semicolon")),
                     node => Ok(Node {
-                        span: (first_token.span.0, node.span.1),
+                        span: Span::compose(first_token.span, node.span),
                         node_type: NodeType::LetDeclaration(LetDeclData {
                             name,
                             expr: Some(Box::new(node)),
@@ -264,7 +274,7 @@ impl Parser {
         while self.peek_token()?.token_type == TokenType::Equal {
             let operator = self.eat_token()?;
             let right = self.parse_comparison_expression()?;
-            let span = (left.span.0, right.span.1);
+            let span = Span::compose(left.span, right.span);
             left = Node {
                 node_type: NodeType::BinaryExpr(BinaryExprData {
                     left: Box::new(left),
@@ -287,7 +297,7 @@ impl Parser {
         {
             let operator = self.eat_token()?;
             let right = self.parse_add_expression()?;
-            let span = (left.span.0, right.span.1);
+            let span = Span::compose(left.span, right.span);
             left = Node {
                 node_type: NodeType::BinaryExpr(BinaryExprData {
                     left: Box::new(left),
@@ -310,7 +320,7 @@ impl Parser {
         {
             let operator = self.eat_token()?;
             let right = self.parse_mult_expression()?;
-            let span = (left.span.0, right.span.1);
+            let span = Span::compose(left.span, right.span);
             left = Node {
                 node_type: NodeType::BinaryExpr(BinaryExprData {
                     left: Box::new(left),
@@ -333,7 +343,7 @@ impl Parser {
         {
             let operator = self.eat_token()?;
             let right = self.parse_primary_expression()?;
-            let span = (left.span.0, right.span.1);
+            let span = Span::compose(left.span, right.span);
             left = Node {
                 node_type: NodeType::BinaryExpr(BinaryExprData {
                     left: Box::new(left),
@@ -350,9 +360,7 @@ impl Parser {
         let token = self.eat_token()?;
         match token.token_type {
             TokenType::Identifier(x) => Ok(Node {
-                node_type: NodeType::Identifier(IdentifierData {
-                    name: x,
-                }),
+                node_type: NodeType::Identifier(IdentifierData { name: x }),
                 span: token.span,
             }),
             TokenType::Integer(x) => Ok(Node {

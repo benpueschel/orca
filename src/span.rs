@@ -23,7 +23,16 @@ impl Span {
     pub fn new(start: usize, end: usize) -> Span {
         Span { start, end }
     }
-    pub fn compose(start: &Span, end: &Span) -> Span {
+    pub fn single(pos: usize) -> Span {
+        Span::with_len(pos, 1)
+    }
+    pub fn with_len(start: usize, len: usize) -> Span {
+        Span {
+            start,
+            end: start + len,
+        }
+    }
+    pub fn compose(start: Span, end: Span) -> Span {
         Span {
             start: start.start,
             end: end.end,
@@ -31,5 +40,9 @@ impl Span {
     }
     pub fn empty() -> Span {
         Span { start: 0, end: 0 }
+    }
+
+    pub fn len(&self) -> usize {
+        self.end - self.start
     }
 }

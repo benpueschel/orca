@@ -1,9 +1,11 @@
-use crate::frontend::lexer::Token;
+use std::fmt::Debug;
 
-#[derive(Debug, Clone, PartialEq)]
+use crate::{frontend::lexer::Token, span::Span};
+
+#[derive(Clone, PartialEq)]
 pub struct Node {
     pub node_type: NodeType,
-    pub span: (usize, usize),
+    pub span: Span,
 }
 
 // TODO: rethink Box<Node> - storing nodes on the heap isn't great.
@@ -68,4 +70,14 @@ pub struct BinaryExprData {
     pub left: Box<Node>,
     pub right: Box<Node>,
     pub operator: Token,
+}
+
+impl Debug for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if f.alternate() {
+            write!(f, "{:#?}", self.node_type)
+        } else {
+            write!(f, "{:?}", self.node_type)
+        }
+    }
 }

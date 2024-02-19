@@ -1,10 +1,13 @@
-use crate::error::{Error, ErrorKind};
+use crate::{
+    error::{Error, ErrorKind},
+    span::Span,
+};
 use std::ops::Add;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub token_type: TokenType,
-    pub span: (usize, usize),
+    pub span: Span,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -34,6 +37,7 @@ pub enum TokenType {
     Invalid,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Lexer {
     input: String,
     current_pos: usize,
@@ -56,7 +60,7 @@ impl Lexer {
             None => {
                 return Ok(Token {
                     token_type: TokenType::EOF,
-                    span: (i, i),
+                    span: Span::new(i, i),
                 })
             }
             Some(x) => x,
@@ -65,55 +69,55 @@ impl Lexer {
         let result = match next {
             ';' => Ok(Token {
                 token_type: TokenType::Semicolon,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             '=' => Ok(Token {
                 token_type: TokenType::Equal,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             '(' => Ok(Token {
                 token_type: TokenType::ParenOpen,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             ')' => Ok(Token {
                 token_type: TokenType::ParenClose,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             '{' => Ok(Token {
                 token_type: TokenType::BracketOpen,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             '}' => Ok(Token {
                 token_type: TokenType::BracketClose,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             '*' => Ok(Token {
                 token_type: TokenType::Star,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             '%' => Ok(Token {
                 token_type: TokenType::Percent,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             '/' => Ok(Token {
                 token_type: TokenType::Slash,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             '+' => Ok(Token {
                 token_type: TokenType::Plus,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             '-' => Ok(Token {
                 token_type: TokenType::Minus,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             '<' => Ok(Token {
                 token_type: TokenType::LeftCaret,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
             '>' => Ok(Token {
                 token_type: TokenType::RightCaret,
-                span: (i, i + 1),
+                span: Span::single(i),
             }),
 
             c if c >= '0' && c <= '9' => self.tokenize_number(i),
@@ -130,7 +134,7 @@ impl Lexer {
     pub fn next_token(&mut self) -> Result<Token, LexerError> {
         let token = self.peek()?;
 
-        self.current_pos = token.span.1;
+        self.current_pos = token.span.end;
         return Ok(token);
     }
 
@@ -170,20 +174,20 @@ impl Lexer {
         if skip_keyword_val {
             return Ok(Token {
                 token_type: TokenType::Identifier(identifier.to_string()),
-                span: (pos, pos + i),
+                span: Span::single(pos),
             });
         }
 
         Ok(Token {
             token_type: match identifier {
-                "return" => TokenType::Return, 
+                "return" => TokenType::Return,
                 "let" => TokenType::Let,
                 "fn" => TokenType::Fn,
                 "if" => TokenType::If,
                 "else" => TokenType::Else,
                 _ => TokenType::Identifier(identifier.to_string()),
             },
-            span: (pos, pos + identifier.len()),
+            span: Span::with_len(pos, identifier.len()),
         })
     }
 
@@ -231,7 +235,10 @@ impl Lexer {
                     return Err(ErrorKind::InvalidData.into());
                 }
             };
-            Ok(Token { token_type: TokenType::Float(value), span: (start, start + i) })
+            Ok(Token {
+                token_type: TokenType::Float(value),
+                span: Span::with_len(start, i),
+            })
         } else {
             let value: usize = match decimal.parse() {
                 Ok(x) => x,
@@ -239,7 +246,10 @@ impl Lexer {
                     return Err(ErrorKind::InvalidData.into());
                 }
             };
-            Ok(Token { token_type: TokenType::Integer(value), span: (start, start + i) })
+            Ok(Token {
+                token_type: TokenType::Integer(value),
+                span: Span::with_len(start, i),
+            })
         }
     }
 
@@ -260,7 +270,10 @@ impl Iterator for Lexer {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.next_token() {
-            Ok(x) => Some(x),
+            Ok(x) => match x.token_type {
+                TokenType::EOF => None,
+                _ => Some(x),
+            },
             Err(x) => panic!("{:?}", x),
         }
     }
