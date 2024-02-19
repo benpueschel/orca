@@ -2,7 +2,6 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::frontend::{
     ast::{BinaryExprData, FnDeclData, IfData, LetDeclData, Node, NodeType, ReturnData, Type},
-    control_flow_graph::{CFGraph, CFNode},
     lexer::{Token, TokenType},
 };
 
@@ -34,7 +33,6 @@ pub struct GraphNode {
 
 pub struct X86Linux {
     registers: ScratchRegisters,
-    processed_nodes: Vec<GraphNodeIndex>,
     pub nodes: Vec<AssemblyNode>,
     vars_in_scope: Vec<HashMap<String, Variable>>,
 
@@ -43,25 +41,9 @@ pub struct X86Linux {
 }
 
 impl CodeGenerator for X86Linux {
-    /*
-    fn new(graph: CFGraph) -> Self {
-        let start_node = graph.start_node.expect("start_node is None");
-        let mut gen = X86Linux {
-            registers: ScratchRegisters::new(),
-            processed_nodes: vec![],
-            nodes: vec![],
-            stack_pointer: 0,
-            label_counter: 0,
-        };
-        let mut nodes = gen.gen_cf_node(start_node, &graph);
-        gen.nodes.append(&mut nodes);
-        gen
-    }
-    */
     fn new(node: Node) -> Self {
         let mut gen = X86Linux {
             registers: ScratchRegisters::new(),
-            processed_nodes: vec![],
             nodes: vec![],
             stack_pointer: 0,
             label_counter: 0,
