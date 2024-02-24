@@ -1,4 +1,4 @@
-use crate::frontend::ast::{Node, Type};
+use crate::frontend::{ast::Type, ir::Ir};
 
 use self::x86_linux::assembly_node::Expression;
 
@@ -14,5 +14,6 @@ pub struct Variable {
 
 pub trait CodeGenerator {
     //fn new(graph: CFGraph) -> Self;
-    fn new(node: Node) -> Self;
+    fn new() -> Self;
+    fn process_graph(&mut self, graph: Ir);
 }

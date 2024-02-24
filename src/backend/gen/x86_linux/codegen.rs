@@ -1,39 +1,42 @@
-use super::{assembly_node::{AssemblyNode, Expression, Instruction, JumpCondition}, scratch::ScratchRegisters};
+use super::{
+    assembly_node::{AssemblyNode, Expression, Instruction, JumpCondition},
+    scratch::ScratchRegisters,
+};
 
-pub fn generate_code(nodes: Vec<AssemblyNode>) -> String {
+pub fn generate_code(nodes: &Vec<AssemblyNode>) -> String {
     let mut code = String::new();
     for node in nodes {
         match node.instruction {
             Instruction::LabelDeclaration => {
-                let label = match node.left {
+                let label = match &node.left {
                     Expression::Label(x) => x,
                     _ => panic!("LabelDeclaration must have a label"),
                 };
                 code.push_str(&format!("{}:\n", label));
             }
             Instruction::AssemblyDirective => {
-                let directive = match node.left {
+                let directive = match &node.left {
                     Expression::Label(x) => x,
                     _ => panic!("AssemblyDirective must have a label"),
                 };
                 code.push_str(&format!("{}\n", directive));
             }
             _ => {
-                let instruction_name = get_instruction_name(node.instruction, node.size);
+                let instruction_name = get_instruction_name(&node.instruction, node.size);
                 if let Expression::None = node.left {
                     code.push_str(&format!("{}\n", instruction_name));
                     continue;
-                } 
+                }
                 if let Expression::None = node.right {
                     code.push_str(&format!(
                         "{} {}\n",
                         instruction_name,
-                        get_expression(node.left, node.size)
+                        get_expression(&node.left, node.size)
                     ));
                     continue;
                 }
-                let left = get_expression(node.left, node.size);
-                let right = get_expression(node.right, node.size);
+                let left = get_expression(&node.left, node.size);
+                let right = get_expression(&node.right, node.size);
                 code.push_str(&format!("{} {}, {}\n", instruction_name, left, right));
             }
         }
@@ -41,17 +44,17 @@ pub fn generate_code(nodes: Vec<AssemblyNode>) -> String {
     code
 }
 
-fn get_expression(expression: Expression, size: usize) -> String {
+fn get_expression(expression: &Expression, size: usize) -> String {
     match expression {
         Expression::IntegerLiteral(x) => format!("${}", x),
-        Expression::Register(reg) => format!("{}", ScratchRegisters::get_name(reg, size)),
-        Expression::Memory(x) => x,
+        Expression::Register(reg) => format!("{}", ScratchRegisters::get_name(*reg, size)),
+        Expression::Memory(x) => x.clone(),
         Expression::Label(x) => format!("{}", x),
         Expression::None => panic!("Expression::None is not a valid expression"),
     }
 }
 
-fn get_instruction_name(instruction: Instruction, type_size: usize) -> String {
+fn get_instruction_name(instruction: &Instruction, type_size: usize) -> String {
     match type_size {
         0 => get_instruction_name_0(instruction).into(),
         1 => get_instruction_name_8(instruction).into(),
@@ -62,7 +65,7 @@ fn get_instruction_name(instruction: Instruction, type_size: usize) -> String {
     }
 }
 
-fn get_instruction_name_0(instruction: Instruction) -> impl Into<String> {
+fn get_instruction_name_0(instruction: &Instruction) -> impl Into<String> {
     match instruction {
         Instruction::Jmp(x) => match x {
             JumpCondition::Less => "jl",
@@ -80,7 +83,7 @@ fn get_instruction_name_0(instruction: Instruction) -> impl Into<String> {
     }
 }
 
-fn get_instruction_name_8(instruction: Instruction) -> impl Into<String> {
+fn get_instruction_name_8(instruction: &Instruction) -> impl Into<String> {
     match instruction {
         Instruction::Mov => "movb",
         Instruction::Cmp => "cmpb",
@@ -108,7 +111,7 @@ fn get_instruction_name_8(instruction: Instruction) -> impl Into<String> {
         Instruction::AssemblyDirective => panic!("AssemblyDirective is not a valid instruction"),
     }
 }
-fn get_instruction_name_16(instruction: Instruction) -> impl Into<String> {
+fn get_instruction_name_16(instruction: &Instruction) -> impl Into<String> {
     match instruction {
         Instruction::Mov => "movw",
         Instruction::Cmp => "cmpw",
@@ -128,7 +131,7 @@ fn get_instruction_name_16(instruction: Instruction) -> impl Into<String> {
         Instruction::AssemblyDirective => panic!("AssemblyDirective is not a valid instruction"),
     }
 }
-fn get_instruction_name_32(instruction: Instruction) -> impl Into<String> {
+fn get_instruction_name_32(instruction: &Instruction) -> impl Into<String> {
     match instruction {
         Instruction::Mov => "movl",
         Instruction::Cmp => "cmpl",
@@ -148,7 +151,7 @@ fn get_instruction_name_32(instruction: Instruction) -> impl Into<String> {
         Instruction::AssemblyDirective => panic!("AssemblyDirective is not a valid instruction"),
     }
 }
-fn get_instruction_name_64(instruction: Instruction) -> impl Into<String> {
+fn get_instruction_name_64(instruction: &Instruction) -> impl Into<String> {
     match instruction {
         Instruction::Mov => "movq",
         Instruction::Cmp => "cmpq",

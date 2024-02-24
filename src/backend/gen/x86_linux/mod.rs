@@ -1,20 +1,21 @@
-use std::collections::{HashMap, VecDeque};
-
-use crate::frontend::{
-    ast::{BinaryExprData, FnDeclData, IfData, LetDeclData, Node, NodeType, ReturnData, Type},
-    lexer::{Token, TokenType},
-};
+use crate::frontend::
+    ir::{
+        BasicBlock, ExprOperator, Ir, Lvalue, Operand, Statement, StatementKind, TempVal,
+        Var, IR_START_BLOCK,
+    }
+;
 
 use self::{
     assembly_node::{AssemblyNode, Expression, Instruction, JumpCondition},
-    scratch::{Register, ScratchRegisters},
+    scratch::{Register, RegisterGraph, RegisterNode, ScratchRegisters},
 };
 
-use super::{CodeGenerator, Variable};
+use super::CodeGenerator;
 
 pub mod assembly_node;
 pub mod codegen;
 pub mod scratch;
+pub mod terminator;
 
 type GraphNodeIndex = usize;
 
@@ -33,304 +34,209 @@ pub struct GraphNode {
 
 pub struct X86Linux {
     registers: ScratchRegisters,
+    register_graph: RegisterGraph,
     pub nodes: Vec<AssemblyNode>,
-    vars_in_scope: Vec<HashMap<String, Variable>>,
+    finished_label: String,
 
-    stack_pointer: usize,
     label_counter: usize,
 }
 
 impl CodeGenerator for X86Linux {
-    fn new(node: Node) -> Self {
-        let mut gen = X86Linux {
+    fn new() -> Self {
+        X86Linux {
             registers: ScratchRegisters::new(),
             nodes: vec![],
-            stack_pointer: 0,
-            label_counter: 0,
-            vars_in_scope: vec![],
-        };
-        let mut nodes = gen.gen_node(node);
-        gen.nodes.append(&mut nodes);
-        gen
+            finished_label: ".L0".into(),
+            label_counter: 1, // .L0 is reserved for the end of the program
+            register_graph: RegisterGraph::new(),
+        }
+    }
+    fn process_graph(&mut self, mut graph: Ir) {
+        self.register_graph.build_graph(&graph);
+
+        self.nodes.push(AssemblyNode {
+            instruction: Instruction::AssemblyDirective,
+            size: 0,
+            left: Expression::Label(format!(".globl {}", graph.fn_name)),
+            right: Expression::None,
+        });
+        self.nodes.push(AssemblyNode {
+            instruction: Instruction::LabelDeclaration,
+            size: 0,
+            left: Expression::Label(graph.fn_name.clone()),
+            right: Expression::None,
+        });
+
+        self.setup_stack_frame();
+
+        self.process_basic_block(&mut graph, IR_START_BLOCK);
+
+        self.nodes.push(AssemblyNode {
+            instruction: Instruction::LabelDeclaration,
+            size: 0,
+            left: Expression::Label(self.finished_label.clone()),
+            right: Expression::None,
+        });
+
+        self.nodes.push(AssemblyNode {
+            instruction: Instruction::Pop,
+            size: 8,
+            left: Expression::Register(scratch::RBP),
+            right: Expression::None,
+        });
+        self.nodes.push(AssemblyNode {
+            instruction: Instruction::Ret,
+            size: 8,
+            left: Expression::None,
+            right: Expression::None,
+        });
     }
 }
 
 impl X86Linux {
-    fn process_nodes(&mut self, nodes: &Vec<Node>) -> Vec<AssemblyNode> {
-        let mut nodes = VecDeque::from(nodes.clone());
-        let mut assembly_nodes = vec![];
-
-        while !nodes.is_empty() {
-            let node = nodes.pop_front().unwrap();
-            assembly_nodes.append(&mut self.gen_node(node));
+    fn process_basic_block(&mut self, graph: &mut Ir, block: BasicBlock) {
+        let block = graph.basic_block_data_mut(block);
+        for statement in &block.statements {
+            self.process_statement(statement);
         }
-
-        assembly_nodes
+        if let None = block.terminator {
+            return;
+        }
+        let terminator = block.terminator.clone().unwrap();
+        self.process_terminator(graph, terminator);
     }
 
-    fn gen_node(&mut self, node: Node) -> Vec<AssemblyNode> {
-        match node.node_type {
-            NodeType::FnDeclaration(data) => self.gen_func(data),
-            NodeType::LetDeclaration(data) => self.gen_let(data),
-            NodeType::BinaryExpr(data) => self.gen_expression(data),
-            NodeType::IfStatement(data) => self.gen_if(data),
-            NodeType::ReturnStatement(data) => self.gen_return(data),
-            NodeType::Program(data) => self.process_nodes(&data.body),
-            x => panic!("could not process {:?}", x),
+    fn process_statement(&mut self, statement: &Statement) {
+        match &statement.kind {
+            StatementKind::Assign(lhs, rhs) => {
+                let right = self.process_lvalue(lhs);
+                let left = self.process_operand(rhs);
+                self.nodes.push(AssemblyNode {
+                    instruction: Instruction::Mov,
+                    size: 8, // TODO: dynamic size
+                    left,
+                    right,
+                });
+            }
+            StatementKind::Modify(lhs, op, rhs) => {
+                let right = self.process_lvalue(lhs);
+                let left = self.process_operand(rhs);
+                let instruction = self.get_instruction(op);
+                self.nodes.push(AssemblyNode {
+                    instruction,
+                    size: 8, // TODO: dynamic size
+                    left,
+                    right,
+                });
+            }
         }
     }
 
-    fn gen_return(&mut self, data: ReturnData) -> Vec<AssemblyNode> {
-        let mut instructions = vec![];
-
-        let return_value = match data.expr {
-            Some(expr) => match expr.node_type {
-                NodeType::BinaryExpr(data) => {
-                    instructions.append(&mut self.gen_expression(data));
-                    instructions
-                        .last()
-                        .expect("could not extract return value")
-                        .right
-                        .clone()
-                }
-                NodeType::Identifier(x) => Expression::Memory(x.name),
-                NodeType::IntegerLiteral(x) => Expression::IntegerLiteral(x),
-                x => panic!("{:?} is not a valid expression", x),
-            },
-            None => Expression::None,
-        };
-
-        instructions.append(&mut vec![
-            AssemblyNode {
-                instruction: Instruction::Mov,
-                left: return_value,
-                right: Expression::Register(scratch::RAX),
-                size: 8, // TODO: dynamic types
-            },
-            AssemblyNode {
-                instruction: Instruction::Jmp(JumpCondition::None),
-                left: Expression::Label(format!(".{}.cleanup", data.fn_name)),
-                right: Expression::None,
-                size: 0,
-            },
-        ]);
-        instructions
-    }
-
-    fn gen_func(&mut self, data: FnDeclData) -> Vec<AssemblyNode> {
-        self.vars_in_scope.push(HashMap::new());
-
-        let mut instructions = vec![
-            AssemblyNode {
-                instruction: Instruction::AssemblyDirective,
-                left: Expression::Label(format!(".globl {}", data.name)),
-                right: Expression::None,
-                size: 0,
-            },
-            // function label (.NAME:)
-            AssemblyNode {
-                instruction: Instruction::LabelDeclaration,
-                left: Expression::Label(data.name.clone()),
-                right: Expression::None,
-                size: 0,
-            },
-            // push rbp onto the stack (pushq %rbp)
-            AssemblyNode {
-                instruction: Instruction::Push,
-                left: Expression::Register(scratch::RBP),
-                right: Expression::None,
-                size: 8,
-            },
-            // move rsp into rbp (movq %rsp, %rbp)
-            AssemblyNode {
-                instruction: Instruction::Mov,
-                left: Expression::Register(scratch::RSP),
-                right: Expression::Register(scratch::RBP),
-                size: 8,
-            },
-        ];
-
-        instructions.append(&mut self.process_nodes(&data.body));
-
-        instructions.append(&mut vec![
-            // function cleanup label (.NAME.cleanup:)
-            AssemblyNode {
-                instruction: Instruction::LabelDeclaration,
-                left: Expression::Label(format!(".{}.cleanup", data.name)),
-                right: Expression::None,
-                size: 0,
-            },
-            // pop previously saved stack pointer from the stack
-            AssemblyNode {
-                instruction: Instruction::Pop,
-                left: Expression::Register(scratch::RBP),
-                right: Expression::None,
-                size: 8,
-            },
-            // return
-            AssemblyNode {
-                instruction: Instruction::Ret,
-                left: Expression::None,
-                right: Expression::None,
-                size: 0,
-            },
-        ]);
-
-        self.vars_in_scope.pop();
-
-        instructions
-    }
-
-    fn gen_if(&mut self, data: IfData) -> Vec<AssemblyNode> {
-        self.vars_in_scope.push(HashMap::new());
-
-        let else_label = self.label_alloc();
-        let done_label = self.label_alloc();
-        let mut instructions = vec![];
-
-        let mut jump_condition = JumpCondition::None;
-        if let NodeType::BinaryExpr(expr) = &data.expr.node_type {
-            jump_condition = match &expr.operator.token_type {
-                //TODO: we need to create a type "ComparisonOperator" to handle this (== vs =)
-                // TokenType::Equal => JumpCondition::NotEqual,
-                TokenType::LeftCaret => JumpCondition::GreaterOrEqual,
-                TokenType::RightCaret => JumpCondition::LessOrEqual,
-                x => panic!("{:?} is not a valid comparison operator", x),
-            };
+    fn process_lvalue(&mut self, lvalue: &Lvalue) -> Expression {
+        match lvalue {
+            Lvalue::Variable(var) => self.process_variable(var.clone()),
+            Lvalue::Temp(temp) => self.process_temp(temp.clone()),
         }
+    }
 
-        // TODO: compare expression to 0 if it's not a comparison
-        instructions.append(&mut self.gen_node(*data.expr));
-        instructions.push(AssemblyNode {
-            instruction: Instruction::Jmp(jump_condition),
-            left: else_label.clone(),
+    fn process_variable(&mut self, var: Var) -> Expression {
+        self.process_register_node(var.into())
+    }
+
+    fn process_temp(&mut self, temp: TempVal) -> Expression {
+        self.process_register_node(temp.into())
+    }
+
+    fn process_register_node(&mut self, node: RegisterNode) -> Expression {
+        let node_data = self.register_graph.node_data(node).unwrap_or_else(|| {
+            panic!("Node {:?} not found in register graph", node);
+        });
+        match node_data.location {
+            scratch::ScratchLocation::Register(register) => Expression::Register(register),
+            scratch::ScratchLocation::Stack(offset) => Expression::Memory(format!(
+                "{}({})",
+                offset,
+                ScratchRegisters::get_name(scratch::RBP, 8)
+            )),
+            scratch::ScratchLocation::Unassigned => panic!("Unassigned register"),
+        }
+    }
+
+    fn process_operand(&mut self, operand: &Operand) -> Expression {
+        match operand {
+            Operand::Consume(lvalue) => self.process_lvalue(&lvalue),
+            Operand::IntegerLit(x) => Expression::IntegerLiteral(*x),
+            Operand::Unit => Expression::None,
+        }
+    }
+
+    fn process_binary_expr(&mut self, op: ExprOperator, lhs: Operand, rhs: Operand) -> Expression {
+        match op {
+            ExprOperator::Eq => self.process_comparison(JumpCondition::Equal, lhs, rhs),
+            ExprOperator::Gt => self.process_comparison(JumpCondition::Greater, lhs, rhs),
+            ExprOperator::Gte => self.process_comparison(JumpCondition::GreaterOrEqual, lhs, rhs),
+            ExprOperator::Lt => self.process_comparison(JumpCondition::Less, lhs, rhs),
+            ExprOperator::Lte => self.process_comparison(JumpCondition::LessOrEqual, lhs, rhs),
+            ExprOperator::Add => self.process_instruction(Instruction::Add, lhs, rhs),
+            ExprOperator::Sub => self.process_instruction(Instruction::Sub, lhs, rhs),
+            ExprOperator::Mul => self.process_instruction(Instruction::IMul, lhs, rhs),
+            ExprOperator::Div => self.process_instruction(Instruction::IDiv, lhs, rhs),
+        }
+    }
+
+    fn process_instruction(
+        &mut self,
+        instr: Instruction,
+        lhs: Operand,
+        rhs: Operand,
+    ) -> Expression {
+        let lhs = self.process_operand(&lhs);
+        let rhs = self.process_operand(&rhs);
+        self.nodes.push(AssemblyNode {
+            instruction: instr,
+            size: 8, // TODO: dynamic size
+            left: lhs,
+            right: rhs.clone(),
+        });
+        rhs
+    }
+
+    fn process_comparison(
+        &mut self,
+        condition: JumpCondition,
+        lhs: Operand,
+        rhs: Operand,
+    ) -> Expression {
+        let lhs = self.process_operand(&lhs);
+        let rhs = self.process_operand(&rhs);
+        self.nodes.push(AssemblyNode {
+            instruction: Instruction::Cmp,
+            size: 8, // TODO: dynamic size
+            left: lhs,
+            right: rhs.clone(),
+        });
+        self.nodes.push(AssemblyNode {
+            instruction: Instruction::Set(condition),
+            size: 1,
+            left: rhs.clone(),
             right: Expression::None,
-            size: 0,
         });
+        rhs
+    }
 
-        instructions.append(&mut self.process_nodes(&data.body));
-        instructions.append(&mut vec![
-            AssemblyNode {
-                instruction: Instruction::Jmp(JumpCondition::None),
-                left: done_label.clone(),
-                right: Expression::None,
-                size: 0,
-            },
-            AssemblyNode {
-                instruction: Instruction::LabelDeclaration,
-                left: else_label.clone(),
-                right: Expression::None,
-                size: 0,
-            },
-        ]);
-        instructions.append(&mut self.process_nodes(&data.else_body));
-        instructions.push(AssemblyNode {
-            instruction: Instruction::LabelDeclaration,
-            left: done_label.clone(),
+    fn setup_stack_frame(&mut self) {
+        self.nodes.push(AssemblyNode {
+            instruction: Instruction::Push,
+            size: 8,
+            left: Expression::Register(scratch::RBP),
             right: Expression::None,
-            size: 0,
         });
-
-        self.vars_in_scope.pop();
-        instructions
-    }
-
-    fn gen_let(&mut self, data: LetDeclData) -> Vec<AssemblyNode> {
-        let mut instructions = vec![];
-        let stack_pos = self.stack_alloc(Type::Usize); // TODO: dynamic types
-        self.scope_push(data.name.clone(), stack_pos.clone(), Type::Usize); // TODO: dynamic types
-        if let Some(expr) = data.expr {
-            let expr_result = match expr.node_type {
-                NodeType::IntegerLiteral(x) => Expression::IntegerLiteral(x),
-                NodeType::Identifier(x) => self.find_var(x.name).current_location.clone(),
-                NodeType::BinaryExpr(x) => {
-                    instructions.append(&mut self.gen_expression(x));
-                    instructions.last().unwrap().clone_result()
-                }
-                x => panic!("{:?} is not a valid expression", x),
-            };
-            instructions.push(AssemblyNode {
-                instruction: Instruction::Mov,
-                left: expr_result,
-                right: stack_pos,
-                size: 8, // TODO: dynamic types
-            });
-        }
-        instructions
-    }
-
-    fn gen_expression(&mut self, data: BinaryExprData) -> Vec<AssemblyNode> {
-        let mut nodes = vec![];
-
-        // NOTE: we swap left and right because x86 operations are right-hand destructive in AT&T syntax
-        let mut right = match data.left.node_type {
-            NodeType::IntegerLiteral(x) => Expression::IntegerLiteral(x),
-            NodeType::Identifier(x) => self.find_var(x.name).current_location.clone(),
-            NodeType::BinaryExpr(x) => {
-                nodes.append(&mut self.gen_expression(x));
-                nodes.last().unwrap().clone_result()
-            }
-            _ => panic!(""),
-        };
-        let left = match data.right.node_type {
-            NodeType::IntegerLiteral(x) => Expression::IntegerLiteral(x),
-            NodeType::Identifier(x) => self.find_var(x.name).current_location.clone(),
-            NodeType::BinaryExpr(x) => {
-                nodes.append(&mut self.gen_expression(x));
-                nodes.last().unwrap().clone_result()
-            }
-            _ => panic!(""),
-        };
-
-        if let TokenType::Equal = data.operator.token_type {
-            // TODO: something ig
-        } else {
-            match right {
-                Expression::Register(_) => {}
-                _ => {
-                    let temp_reigster = self.registers.allocate().expect("register overflow");
-                    nodes.push(AssemblyNode {
-                        instruction: Instruction::Mov,
-                        left: right.clone(),
-                        right: Expression::Register(temp_reigster),
-                        size: 8, // TODO: dynamic types
-                    });
-                    right = Expression::Register(temp_reigster);
-                    self.registers.free(temp_reigster);
-                }
-            };
-        }
-
-        let instruction = Self::get_instruction(data.operator);
-        nodes.push(AssemblyNode {
-            instruction,
-            left,
-            right,
-            size: 8, // TODO: dynamic types
+        self.nodes.push(AssemblyNode {
+            instruction: Instruction::Mov,
+            size: 8,
+            left: Expression::Register(scratch::RSP),
+            right: Expression::Register(scratch::RBP),
         });
-
-        nodes
-    }
-
-    fn find_var(&self, name: String) -> Variable {
-        for scope in self.vars_in_scope.iter().rev() {
-            if let Some(var) = scope.get(&name) {
-                return var.clone();
-            }
-        }
-        panic!("variable {} not found", name);
-    }
-
-    fn scope_push(&mut self, identifier: String, expression: Expression, r#type: Type) {
-        self.vars_in_scope.last_mut().unwrap().insert(
-            identifier.clone(),
-            Variable {
-                identifier,
-                r#type,
-                current_location: expression,
-                memory_location: None,
-            },
-        );
     }
 
     fn label_alloc(&mut self) -> Expression {
@@ -339,28 +245,17 @@ impl X86Linux {
         Expression::Label(label)
     }
 
-    fn stack_alloc(&mut self, r#type: Type) -> Expression {
-        let type_size = match r#type {
-            Type::Usize => 8,
-        };
-        self.stack_pointer += type_size;
-        Expression::Memory(format!(
-            "-{}({})",
-            self.stack_pointer,
-            ScratchRegisters::get_name(scratch::RBP, type_size)
-        ))
-    }
-
-    fn get_instruction(operator: Token) -> Instruction {
-        match operator.token_type {
-            TokenType::Equal => Instruction::Mov,
-            TokenType::Plus => Instruction::Add,
-            TokenType::Minus => Instruction::Sub,
-            TokenType::Star => Instruction::IMul,
-            TokenType::Slash => Instruction::IDiv,
-            TokenType::LeftCaret => Instruction::Cmp,
-            TokenType::RightCaret => Instruction::Cmp,
-            x => panic!("{:?} is not an operator", x),
+    fn get_instruction(&self, op: &ExprOperator) -> Instruction {
+        match op {
+            ExprOperator::Add => Instruction::Add,
+            ExprOperator::Sub => Instruction::Sub,
+            ExprOperator::Mul => Instruction::IMul,
+            ExprOperator::Div => Instruction::IDiv,
+            ExprOperator::Eq => Instruction::Cmp,
+            ExprOperator::Gt => Instruction::Cmp,
+            ExprOperator::Gte => Instruction::Cmp,
+            ExprOperator::Lt => Instruction::Cmp,
+            ExprOperator::Lte => Instruction::Cmp,
         }
     }
 }

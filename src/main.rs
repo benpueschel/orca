@@ -10,13 +10,15 @@ use target::TargetPlatform;
 
 use frontend::{ast::NodeType, ir, lexer::Lexer, parser::Parser};
 
-use crate::backend::gen::x86_linux::codegen::generate_code;
+use crate::{
+    backend::gen::x86_linux::codegen::generate_code, frontend::ir::trans::IrTransforamtion,
+};
 
 pub mod backend;
 pub mod error;
 pub mod frontend;
-pub mod target;
 pub mod span;
+pub mod target;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -44,32 +46,30 @@ fn main() -> io::Result<()> {
 
     // TODO: parse tree on demand - we'd need to pass the BufReader down to the lexer
     let lexer = Lexer::new(input);
-    for token in lexer.clone() {
-        println!("{:?}", token);
-    }
 
     let mut parser = Parser::new(lexer);
-
 
     let ast = match parser.produce_ast() {
         Ok(x) => x,
         Err(x) => panic!("{:?}", x),
     };
 
-    // println!("{:#?}", ast);
-
+    let mut generator = x86_linux::X86Linux::new();
+    let mut assembly = String::new();
     if let NodeType::Program(data) = ast.clone().node_type {
         for node in data.body {
             if let NodeType::FnDeclaration(data) = node.node_type {
-                let ir = ir::build::Builder::build(data, node.span.into());
-                println!("{}", ir);
+                let mut ir = ir::build::Builder::build(data, node.span.into());
+                IrTransforamtion::transform_mut(&mut ir);
+
+                generator.process_graph(ir);
+                let code = generate_code(&generator.nodes);
+
+                assembly.push_str(&code);
+                generator.nodes.clear();
             }
         }
     }
-
-    let generator = x86_linux::X86Linux::new(ast);
-    let assembly = generate_code(generator.nodes);
-
     if opt.print_assembly {
         println!("{}", assembly);
     } else {

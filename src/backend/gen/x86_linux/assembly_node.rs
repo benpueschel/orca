@@ -66,6 +66,6 @@ pub struct AssemblyNode {
 
 impl AssemblyNode {
     pub fn clone_result(&self) -> Expression {
-        return self.right.clone();
+        self.right.clone()
     }
 }
