@@ -4,22 +4,24 @@ use crate::span::Span;
 
 pub mod build;
 pub mod debug;
+pub mod trans;
 
 pub const IR_START_BLOCK: BasicBlock = BasicBlock(0);
 pub const IR_END_BLOCK: BasicBlock = BasicBlock(1);
 #[derive(Clone, PartialEq)]
 pub struct Ir {
     pub basic_blocks: Vec<BasicBlockData>,
-    pub var_decls: Vec<VarDecl>,
-    pub temp_decls: Vec<TempDecl>,
     pub scopes: Vec<ScopeData>,
     pub span: Span,
+    pub fn_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScopeData {
     pub span: Span,
     pub parent: Option<Scope>,
+    pub var_decls: Vec<VarDecl>,
+    pub temp_decls: Vec<TempDecl>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -64,6 +66,7 @@ impl IndexMut<BasicBlock> for Vec<BasicBlockData> {
 pub struct BasicBlockData {
     pub statements: Vec<Statement>,
     pub terminator: Option<Terminator>,
+    pub scope: Scope,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -75,12 +78,14 @@ pub struct Terminator {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TerminatorKind {
-    Return,
+    Return {
+        expr: Operand,
+    },
     Goto {
         target: BasicBlock,
     },
     If {
-        condition: Operand,
+        condition: Rvalue,
         targets: (BasicBlock, BasicBlock),
     },
 }
@@ -93,8 +98,8 @@ pub struct Statement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatementKind {
-    Assign(Lvalue, Rvalue),
-    Return(Operand),
+    Assign(Lvalue, Operand),
+    Modify(Lvalue, ExprOperator, Operand),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,20 +157,29 @@ impl From<Lvalue> for Rvalue {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TempVal(usize);
+impl TempVal {
+    pub fn value(&self) -> usize {
+        self.0
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TempDecl {
     pub scope: Scope,
 }
 
+const VAR_UNINITIALIZED: usize = usize::MAX;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Var {
     pub name: String,
+    pub id: usize,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarDecl {
     pub name: String,
+    pub id: usize,
     pub span: Span,
     pub scope: Scope,
 }
@@ -176,5 +190,11 @@ impl Ir {
     }
     pub fn basic_block_data_mut(&mut self, block: BasicBlock) -> &mut BasicBlockData {
         &mut self.basic_blocks[block.index()]
+    }
+    pub fn scope_data(&self, scope: Scope) -> &ScopeData {
+        &self.scopes[scope.index()]
+    }
+    pub fn scope_data_mut(&mut self, scope: Scope) -> &mut ScopeData {
+        &mut self.scopes[scope.index()]
     }
 }

@@ -130,11 +130,11 @@ impl TerminatorKind {
                     )?;
                 }
             }
-            TerminatorKind::Return => {
+            TerminatorKind::Return { expr } => {
                 if pretty {
-                    write!(fmt, "return")?;
+                    write!(fmt, "return {:#?}", expr)?;
                 } else {
-                    write!(fmt, "return")?;
+                    write!(fmt, "return {:?}", expr)?;
                 }
             }
         }
@@ -152,8 +152,8 @@ impl TerminatorKind {
                 let else_block = ir.basic_block_data(targets.1).display_fmt(ir, pretty)?;
                 write!(fmt, "if({}){{\n{}\n}}else{{:\n{}}})", condition, then_block, else_block)?;
             }
-            TerminatorKind::Return => {
-                write!(fmt, "return")?;
+            TerminatorKind::Return { expr }=> {
+                write!(fmt, "return {}", expr)?;
             }
         }
         Ok(fmt)
@@ -178,7 +178,7 @@ impl Display for Statement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
             StatementKind::Assign(lhs, rhs) => write!(f, "{} = {}", lhs, rhs),
-            StatementKind::Return(x) => write!(f, "return {}", x),
+            StatementKind::Modify(lhs, op, rhs) => write!(f, "{} {}= {}", lhs, op, rhs),
         }
     }
 }

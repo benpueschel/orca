@@ -13,8 +13,8 @@ pub struct BasicBlockBuilder {
 }
 
 use super::{
-    BasicBlock, BasicBlockData, Ir, Lvalue, Operand, Scope, ScopeData, Statement, Terminator, Var,
-    VarDecl,
+    BasicBlock, BasicBlockData, Ir, Lvalue, Scope, ScopeData, Statement, Terminator, Var,
+    VarDecl, VAR_UNINITIALIZED,
 };
 
 pub mod branch;
@@ -26,19 +26,25 @@ impl Builder {
     pub fn build(data: ast::FnDeclData, span: Span) -> Ir {
         let mut ir = Ir {
             basic_blocks: vec![],
-            var_decls: vec![],
-            temp_decls: vec![],
             scopes: vec![],
+            fn_name: data.name,
             span,
         };
-        assert_eq!(ir.alloc_empty_basic_block(), IR_START_BLOCK);
-        assert_eq!(ir.alloc_empty_basic_block(), IR_END_BLOCK);
+        assert_eq!(ir.alloc_empty_basic_block(Scope(0)), IR_START_BLOCK);
+        assert_eq!(ir.alloc_empty_basic_block(Scope(0)), IR_END_BLOCK);
+
+        let scope = ir.alloc_scope(ScopeData {
+            temp_decls: vec![],
+            var_decls: vec![],
+            span,
+            parent: None,
+        });
 
         let (first_node, last_node) = ir.traverse_body(data.body, span, None);
 
         ir.basic_block_data_mut(IR_START_BLOCK).terminator = Some(Terminator {
             kind: TerminatorKind::Goto { target: first_node },
-            scope: Scope(0), // TODO: global scope
+            scope,
             span,
         });
 
@@ -46,7 +52,7 @@ impl Builder {
             kind: TerminatorKind::Goto {
                 target: IR_END_BLOCK,
             },
-            scope: Scope(0), // TODO: global scope
+            scope,
             span,
         });
         ir
@@ -61,6 +67,8 @@ impl Ir {
         parent_scope: Option<Scope>,
     ) -> (BasicBlock, BasicBlock) {
         let scope = self.alloc_scope(ScopeData {
+            temp_decls: vec![],
+            var_decls: vec![],
             span,
             parent: parent_scope,
         });
@@ -74,6 +82,7 @@ impl Ir {
 
                 let block = self.alloc_basic_block(BasicBlockData {
                     statements,
+                    scope,
                     terminator: Some(branch.terminator),
                 });
 
@@ -94,6 +103,7 @@ impl Ir {
         let last_block = self.alloc_basic_block(BasicBlockData {
             statements,
             terminator: None,
+            scope,
         });
 
         if let Some(block) = blocks.last() {
@@ -123,16 +133,22 @@ impl Ir {
         span: Span,
         scope: Scope,
     ) -> Vec<Statement> {
-        self.var_decls.push(VarDecl {
+        let scope_data = self.scope_data_mut(scope);
+        scope_data.var_decls.push(VarDecl {
             name: data.name.clone(),
-            span,
+            id: VAR_UNINITIALIZED,
             scope,
+            span,
         });
         if let Some(expr) = data.expr {
             let (right, mut statements) = self.traverse_rvalue(*expr, scope);
             statements.push(Statement {
                 kind: StatementKind::Assign(
-                    Lvalue::Variable(Var { name: data.name }),
+                    Lvalue::Variable(Var {
+                        name: data.name,
+                        id: VAR_UNINITIALIZED,
+                        span,
+                    }),
                     right.into(),
                 ),
                 span,
@@ -143,7 +159,6 @@ impl Ir {
     }
 
     fn traverse_statement(&mut self, node: ast::Node, scope: Scope) -> Vec<Statement> {
-        println!("traverse_statement {:?}", node);
         match node.node_type {
             NodeType::LetDeclaration(data) => self.traverse_let_decl(data, node.span.into(), scope),
             NodeType::BinaryExpr(data) => {
@@ -160,22 +175,6 @@ impl Ir {
                 }
                 Vec::new()
             }
-            NodeType::ReturnStatement(data) => {
-                if let Some(expr) = data.expr {
-                    let (operand, mut statements) =
-                        self.traverse_expr(*expr, node.span.into(), scope);
-                    statements.push(Statement {
-                        kind: StatementKind::Return(operand),
-                        span: node.span.into(),
-                    });
-                    statements
-                } else {
-                    vec![Statement {
-                        kind: StatementKind::Return(Operand::Unit),
-                        span: node.span.into(),
-                    }]
-                }
-            }
             NodeType::Semicolon => vec![],
             x => panic!("node {:?} is not a statement", x),
         }
@@ -186,15 +185,15 @@ impl Ir {
         self.basic_blocks.push(data);
         BasicBlock(index)
     }
-    pub fn alloc_empty_basic_block(&mut self) -> BasicBlock {
+    pub fn alloc_empty_basic_block(&mut self, scope: Scope) -> BasicBlock {
         self.alloc_basic_block(BasicBlockData {
             statements: vec![],
             terminator: None,
+            scope,
         })
     }
     fn alloc_scope(&mut self, data: ScopeData) -> Scope {
-        let index = self.scopes.len();
         self.scopes.push(data);
-        Scope(index)
+        Scope(self.scopes.len() - 1)
     }
 }
