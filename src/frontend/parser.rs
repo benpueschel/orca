@@ -12,6 +12,8 @@ use super::{
     lexer::TokenType,
 };
 
+use super::ast::Type;
+
 macro_rules! unexpected_token {
     ($x:tt) => {
         Error::new(
@@ -106,7 +108,12 @@ impl Parser {
         verify_next_token!(self, TokenType::ParenClose);
         let _ = self.eat_token()?;
 
-        // TODO: parse function return type
+        let return_type = if let TokenType::Colon = self.peek_token()?.token_type {
+            self.eat_token()?;
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
 
         verify_next_token!(self, TokenType::BracketOpen);
         let _ = self.eat_token()?;
@@ -115,8 +122,26 @@ impl Parser {
         let last_token = self.eat_token()?; // eat the closing bracket
 
         Ok(Node {
-            node_type: NodeType::FnDeclaration(FnDeclData { name, body }),
+            node_type: NodeType::FnDeclaration(FnDeclData { name, body, return_type }),
             span: Span::compose(first_token.span, last_token.span),
+        })
+    }
+
+    fn parse_type(&mut self) -> Result<Type, Error> {
+        let ident = match self.eat_token()?.token_type {
+            TokenType::Identifier(x) => x,
+            x => {
+                return Err(Error::new(
+                    ErrorKind::UnexpectedToken,
+                    format!("unexpected token {:?}. expected identifier", x),
+                ));
+            }
+        };
+
+        Ok(match ident.as_ref() {
+            "usize" => Type::Usize,
+            "u32" => Type::U32,
+            _ => Type::Identifier(ident),
         })
     }
 
@@ -234,29 +259,28 @@ impl Parser {
         let last_token = self.eat_token()?;
         match last_token.token_type {
             // TODO: check types
-            TokenType::Semicolon => {
+            TokenType::Colon => {
+                let r#type = Some(self.parse_type()?);
+                let expr = if let TokenType::Equal = self.peek_token()?.token_type {
+                    self.eat_token()?;
+                    Some(Box::new(self.parse_expression()?))
+                } else {
+                    None
+                };
                 return Ok(Node {
+                    span: Span::compose(first_token.span, last_token.span),
+                    node_type: NodeType::LetDeclaration(LetDeclData { name, expr, r#type }),
+                });
+            }
+            TokenType::Semicolon => {
+                return Ok(Node { 
+                    span: Span::compose(first_token.span, last_token.span), 
                     node_type: NodeType::LetDeclaration(LetDeclData {
                         name,
                         expr: None,
                         r#type: None,
                     }),
-                    span: Span::compose(first_token.span, last_token.span),
                 })
-            }
-            TokenType::Equal => {
-                let expr = self.parse_add_expression()?;
-                match expr {
-                    x if x.node_type == NodeType::Semicolon => Err(unexpected_token!("Semicolon")),
-                    node => Ok(Node {
-                        span: Span::compose(first_token.span, node.span),
-                        node_type: NodeType::LetDeclaration(LetDeclData {
-                            name,
-                            expr: Some(Box::new(node)),
-                            r#type: None,
-                        }),
-                    }),
-                }
             }
             x => Err(unexpected_token!(x)),
         }

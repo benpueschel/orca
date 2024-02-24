@@ -33,6 +33,7 @@ pub enum TokenType {
     BracketOpen,
     BracketClose,
     Semicolon,
+    Colon,
     EOF,
     Invalid,
 }
@@ -69,6 +70,10 @@ impl Lexer {
         let result = match next {
             ';' => Ok(Token {
                 token_type: TokenType::Semicolon,
+                span: Span::single(i),
+            }),
+            ':' => Ok(Token {
+                token_type: TokenType::Colon,
                 span: Span::single(i),
             }),
             '=' => Ok(Token {
