@@ -1,16 +1,24 @@
-use crate::frontend::lexer::Token;
+use std::fmt::Debug;
+
+use crate::{frontend::lexer::Token, span::Span};
+
+#[derive(Clone, PartialEq)]
+pub struct Node {
+    pub node_type: NodeType,
+    pub span: Span,
+}
 
 // TODO: rethink Box<Node> - storing nodes on the heap isn't great.
 // use lifetimed reference?
 #[derive(Debug, Clone, PartialEq)]
-pub enum Node {
+pub enum NodeType {
     Program(ProgramData),
     FnDeclaration(FnDeclData),
     LetDeclaration(LetDeclData),
     IfStatement(IfData),
     ReturnStatement(ReturnData),
     BinaryExpr(BinaryExprData),
-    Identifier(String),
+    Identifier(IdentifierData),
     IntegerLiteral(usize),
     Semicolon,
 }
@@ -20,6 +28,11 @@ pub enum Type {
     Usize,
     U32,
     Identifier(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IdentifierData {
+    pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +64,8 @@ pub struct LetDeclData {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnData {
     pub expr: Option<Box<Node>>,
+    // TODO: somehow reference the FnDeclData without engaging in lifetime madness?
+    pub fn_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -58,4 +73,14 @@ pub struct BinaryExprData {
     pub left: Box<Node>,
     pub right: Box<Node>,
     pub operator: Token,
+}
+
+impl Debug for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if f.alternate() {
+            write!(f, "{:#?}", self.node_type)
+        } else {
+            write!(f, "{:?}", self.node_type)
+        }
+    }
 }
