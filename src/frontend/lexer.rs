@@ -1,8 +1,17 @@
-use crate::error::{Error, ErrorKind};
+use crate::{
+    error::{Error, ErrorKind},
+    span::Span,
+};
 use std::ops::Add;
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Token {
+pub struct Token {
+    pub token_type: TokenType,
+    pub span: Span,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TokenType {
     Return,
     Fn,
     Let,
@@ -24,10 +33,12 @@ pub enum Token {
     BracketOpen,
     BracketClose,
     Semicolon,
+    Colon,
     EOF,
     Invalid,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Lexer {
     input: String,
     current_pos: usize,
@@ -43,50 +54,98 @@ impl Lexer {
         }
     }
 
-    pub fn peek(&self) -> Result<(Token, usize), LexerError> {
+    pub fn peek(&self) -> Result<Token, LexerError> {
         let whitespaces = self.count_whitespaces();
         let i = self.current_pos + whitespaces;
-        let slice = &self.input[i..];
-        let next = match slice.chars().next() {
-            None => return Ok((Token::EOF, 0)),
+        let next = match self.input[i..].chars().next() {
+            None => {
+                return Ok(Token {
+                    token_type: TokenType::EOF,
+                    span: Span::new(i, i),
+                })
+            }
             Some(x) => x,
         };
 
         let result = match next {
-            ';' => Ok((Token::Semicolon, 1)),
-            '=' => Ok((Token::Equal, 1)),
-            '(' => Ok((Token::ParenOpen, 1)),
-            ')' => Ok((Token::ParenClose, 1)),
-            '{' => Ok((Token::BracketOpen, 1)),
-            '}' => Ok((Token::BracketClose, 1)),
-            '*' => Ok((Token::Star, 1)),
-            '%' => Ok((Token::Percent, 1)),
-            '/' => Ok((Token::Slash, 1)),
-            '+' => Ok((Token::Plus, 1)),
-            '-' => Ok((Token::Minus, 1)),
-            '<' => Ok((Token::LeftCaret, 1)),
-            '>' => Ok((Token::RightCaret, 1)),
+            ';' => Ok(Token {
+                token_type: TokenType::Semicolon,
+                span: Span::single(i),
+            }),
+            ':' => Ok(Token {
+                token_type: TokenType::Colon,
+                span: Span::single(i),
+            }),
+            '=' => Ok(Token {
+                token_type: TokenType::Equal,
+                span: Span::single(i),
+            }),
+            '(' => Ok(Token {
+                token_type: TokenType::ParenOpen,
+                span: Span::single(i),
+            }),
+            ')' => Ok(Token {
+                token_type: TokenType::ParenClose,
+                span: Span::single(i),
+            }),
+            '{' => Ok(Token {
+                token_type: TokenType::BracketOpen,
+                span: Span::single(i),
+            }),
+            '}' => Ok(Token {
+                token_type: TokenType::BracketClose,
+                span: Span::single(i),
+            }),
+            '*' => Ok(Token {
+                token_type: TokenType::Star,
+                span: Span::single(i),
+            }),
+            '%' => Ok(Token {
+                token_type: TokenType::Percent,
+                span: Span::single(i),
+            }),
+            '/' => Ok(Token {
+                token_type: TokenType::Slash,
+                span: Span::single(i),
+            }),
+            '+' => Ok(Token {
+                token_type: TokenType::Plus,
+                span: Span::single(i),
+            }),
+            '-' => Ok(Token {
+                token_type: TokenType::Minus,
+                span: Span::single(i),
+            }),
+            '<' => Ok(Token {
+                token_type: TokenType::LeftCaret,
+                span: Span::single(i),
+            }),
+            '>' => Ok(Token {
+                token_type: TokenType::RightCaret,
+                span: Span::single(i),
+            }),
 
-            c if c >= '0' && c <= '9' => Self::tokenize_number(slice),
-            c @ '_' | c if c.is_alphabetic() => Self::tokenize_ident(slice),
+            c if c >= '0' && c <= '9' => self.tokenize_number(i),
+            c @ '_' | c if c.is_alphabetic() => self.tokenize_ident(i),
 
             x => Err(Error::new(
                 ErrorKind::UnexpectedSymbol,
                 format!("unexpected character {}", x),
             )),
         }?;
-        Ok((result.0, result.1 + whitespaces))
+        Ok(result)
     }
 
     pub fn next_token(&mut self) -> Result<Token, LexerError> {
-        let (token, length) = self.peek()?;
+        let token = self.peek()?;
 
-        self.current_pos += length;
+        self.current_pos = token.span.end;
         return Ok(token);
     }
 
-    pub fn tokenize_ident(data: &str) -> Result<(Token, usize), LexerError> {
+    pub fn tokenize_ident(&self, pos: usize) -> Result<Token, LexerError> {
         // identifiers need to start with an alphabetic ascii char
+        let data = &self.input[pos..];
         match data.chars().next() {
             Some(x) if !x.is_alphabetic() => {
                 return Err(Error::new(
@@ -118,24 +177,28 @@ impl Lexer {
 
         let identifier = &data[0..i];
         if skip_keyword_val {
-            return Ok((Token::Identifier(identifier.to_string()), i));
+            return Ok(Token {
+                token_type: TokenType::Identifier(identifier.to_string()),
+                span: Span::single(pos),
+            });
         }
 
-        Ok((
-            match identifier {
-                "return" => Token::Return,
-                "let" => Token::Let,
-                "fn" => Token::Fn,
-                "if" => Token::If,
-                "else" => Token::Else,
-                _ => Token::Identifier(identifier.to_string()),
+        Ok(Token {
+            token_type: match identifier {
+                "return" => TokenType::Return,
+                "let" => TokenType::Let,
+                "fn" => TokenType::Fn,
+                "if" => TokenType::If,
+                "else" => TokenType::Else,
+                _ => TokenType::Identifier(identifier.to_string()),
             },
-            identifier.len(),
-        ))
+            span: Span::with_len(pos, identifier.len()),
+        })
     }
 
-    fn tokenize_number(data: &str) -> Result<(Token, usize), LexerError> {
+    fn tokenize_number(&self, start: usize) -> Result<Token, LexerError> {
         let mut seen_dot = false;
+        let data = &self.input[start..];
 
         match data.chars().next() {
             Some(x) if !x.is_numeric() => {
@@ -177,7 +240,10 @@ impl Lexer {
                     return Err(ErrorKind::InvalidData.into());
                 }
             };
-            Ok((Token::Float(value), i))
+            Ok(Token {
+                token_type: TokenType::Float(value),
+                span: Span::with_len(start, i),
+            })
         } else {
             let value: usize = match decimal.parse() {
                 Ok(x) => x,
@@ -185,7 +251,10 @@ impl Lexer {
                     return Err(ErrorKind::InvalidData.into());
                 }
             };
-            Ok((Token::Integer(value), i))
+            Ok(Token {
+                token_type: TokenType::Integer(value),
+                span: Span::with_len(start, i),
+            })
         }
     }
 
@@ -206,7 +275,10 @@ impl Iterator for Lexer {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.next_token() {
-            Ok(x) => Some(x),
+            Ok(x) => match x.token_type {
+                TokenType::EOF => None,
+                _ => Some(x),
+            },
             Err(x) => panic!("{:?}", x),
         }
     }
@@ -214,11 +286,11 @@ impl Iterator for Lexer {
 
 #[cfg(test)]
 mod tests {
-    use super::{Lexer, Token};
+    use super::{Lexer, TokenType};
     macro_rules! token_eq {
         { $x:expr,$y:expr } => {
             match $x {
-                Ok(x) => assert_eq!(x, $y),
+                Ok(x) => assert_eq!(x.token_type, $y),
                 Err(x) => panic!("{:?}", x),
             }
         };
@@ -240,16 +312,16 @@ mod tests {
 
     #[test]
     fn test_keywords() {
-        test_token!("fn", Token::Fn);
-        test_token!("let", Token::Let);
-        test_token!("return", Token::Return);
+        test_token!("fn", TokenType::Fn);
+        test_token!("let", TokenType::Let);
+        test_token!("return", TokenType::Return);
         // go through the alphabet and test single characters
         for c in 'a'..='z' {
-            test_token!(c, Token::Identifier(c.into()));
+            test_token!(c, TokenType::Identifier(c.into()));
         }
         // go through all digits and test chars
         for c in 0..=9 {
-            test_token!((c + '0' as u8) as char, Token::Integer(c.into()));
+            test_token!((c + '0' as u8) as char, TokenType::Integer(c.into()));
         }
     }
 
@@ -261,20 +333,20 @@ mod tests {
                 return x;\n
             }",
             vec!(
-                Token::Fn,
-                Token::Identifier("main".into()),
-                Token::ParenOpen,
-                Token::ParenClose,
-                Token::BracketOpen,
-                Token::Let,
-                Token::Identifier("x".into()),
-                Token::Equal,
-                Token::Integer(1),
-                Token::Semicolon,
-                Token::Return,
-                Token::Identifier("x".into()),
-                Token::Semicolon,
-                Token::BracketClose,
+                TokenType::Fn,
+                TokenType::Identifier("main".into()),
+                TokenType::ParenOpen,
+                TokenType::ParenClose,
+                TokenType::BracketOpen,
+                TokenType::Let,
+                TokenType::Identifier("x".into()),
+                TokenType::Equal,
+                TokenType::Integer(1),
+                TokenType::Semicolon,
+                TokenType::Return,
+                TokenType::Identifier("x".into()),
+                TokenType::Semicolon,
+                TokenType::BracketClose,
             )
         );
     }
