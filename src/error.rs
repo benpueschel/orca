@@ -38,10 +38,10 @@ pub struct Error {
     msg: String,
 }
 
-impl Into<Error> for ErrorKind {
-    fn into(self) -> Error {
-        let str = self.as_str();
-        Error::new(self, str)
+impl From<ErrorKind> for Error {
+    fn from(val: ErrorKind) -> Self {
+        let str = val.as_str();
+        Error::new(val, str)
     }
 }
 
