@@ -21,6 +21,12 @@ macro_rules! unexpected_token {
             format!("unexpected token {:?}.", $x),
         )
     };
+    ($x:tt, $($y:tt)*) => {
+        Error::new(
+            ErrorKind::UnexpectedToken,
+            format!("unexpected token {:?}. {}", $x, format!($($y)*)),
+        )
+    };
 }
 
 macro_rules! verify_next_token {
@@ -122,7 +128,11 @@ impl Parser {
         let last_token = self.eat_token()?; // eat the closing bracket
 
         Ok(Node {
-            node_type: NodeType::FnDeclaration(FnDeclData { name, body, return_type }),
+            node_type: NodeType::FnDeclaration(FnDeclData {
+                name,
+                body,
+                return_type,
+            }),
             span: Span::compose(first_token.span, last_token.span),
         })
     }
@@ -273,8 +283,8 @@ impl Parser {
                 });
             }
             TokenType::Semicolon => {
-                return Ok(Node { 
-                    span: Span::compose(first_token.span, last_token.span), 
+                return Ok(Node {
+                    span: Span::compose(first_token.span, last_token.span),
                     node_type: NodeType::LetDeclaration(LetDeclData {
                         name,
                         expr: None,
@@ -282,7 +292,7 @@ impl Parser {
                     }),
                 })
             }
-            x => Err(unexpected_token!(x)),
+            x => Err(unexpected_token!(x, "Expected Colon or Semicolon")),
         }
     }
 
@@ -418,7 +428,7 @@ mod test {
     fn test() {
         let lexer = Lexer::new(
             "fn main() { 
-                let x = 3 + 7; 
+                let x: usize = 3 + 7; 
                 x = x * 5;
             }"
             .into(),
