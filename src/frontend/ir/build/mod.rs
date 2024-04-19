@@ -117,7 +117,7 @@ impl Ir {
     fn terminate_leaves(&mut self, block: &BasicBlockBuilder, target: BasicBlock, scope: Scope) {
         for leaf in &block.leaves {
             let term = &mut self.basic_block_data_mut(*leaf).terminator;
-            if let None = term {
+            if term.is_none() {
                 *term = Some(Terminator {
                     kind: TerminatorKind::Goto { target },
                     scope,
@@ -149,7 +149,7 @@ impl Ir {
                         id: VAR_UNINITIALIZED,
                         span,
                     }),
-                    right.into(),
+                    right,
                 ),
                 span,
             });
@@ -160,7 +160,7 @@ impl Ir {
 
     fn traverse_statement(&mut self, node: ast::Node, scope: Scope) -> Vec<Statement> {
         match node.node_type {
-            NodeType::LetDeclaration(data) => self.traverse_let_decl(data, node.span.into(), scope),
+            NodeType::LetDeclaration(data) => self.traverse_let_decl(data, node.span, scope),
             NodeType::BinaryExpr(data) => {
                 // we are only interested in assignments because this function is only called for
                 // statements. any other expression will not have any effect on the program state.
@@ -168,8 +168,8 @@ impl Ir {
                     let left = self.traverse_lvalue(*data.left, scope);
                     let (right, mut statements) = self.traverse_rvalue(*data.right, scope);
                     statements.push(Statement {
-                        kind: StatementKind::Assign(left, right.into()),
-                        span: node.span.into(),
+                        kind: StatementKind::Assign(left, right),
+                        span: node.span,
                     });
                     return statements;
                 }

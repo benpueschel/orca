@@ -29,34 +29,26 @@ impl Debug for Ir {
 
 impl BasicBlockData {
     pub fn display_fmt(&self, ir: &Ir, pretty: bool) -> Result<DebugString, std::fmt::Error> {
-        let mut fmt = DebugString::new();
+        let mut fmt = DebugString::default();
         if ir.basic_blocks[IR_END_BLOCK] == *self {
-            if pretty {
-                write!(fmt, "end")?;
-            } else {
-                write!(fmt, "end")?;
-            }
+            write!(fmt, "end")?;
             return Ok(fmt);
         }
 
         for statement in &self.statements {
-            write!(fmt, "{}\n", statement)?;
+            writeln!(fmt, "{}", statement)?;
         }
         if let Some(terminator) = &self.terminator {
-            write!(fmt, "{}\n", terminator.display_fmt(ir, pretty)?)?;
+            writeln!(fmt, "{}", terminator.display_fmt(ir, pretty)?)?;
         }
         Ok(fmt)
     }
 
     pub fn debug_fmt(&self, ir: &Ir, pretty: bool) -> Result<DebugString, std::fmt::Error> {
-        let mut fmt = DebugString::new();
+        let mut fmt = DebugString::default();
 
         if ir.basic_blocks[IR_END_BLOCK] == *self {
-            if pretty {
-                write!(fmt, "end")?;
-            } else {
-                write!(fmt, "end")?;
-            }
+            write!(fmt, "end")?;
             return Ok(fmt);
         }
 
@@ -84,7 +76,7 @@ impl BasicBlockData {
 
 impl Terminator {
     pub fn debug_fmt(&self, ir: &Ir, pretty: bool) -> Result<DebugString, std::fmt::Error> {
-        let mut fmt = DebugString::new();
+        let mut fmt = DebugString::default();
         let kind = self.kind.debug_fmt(ir, pretty)?;
         if pretty {
             write!(fmt, "{:#?}", kind)?;
@@ -94,7 +86,7 @@ impl Terminator {
         Ok(fmt)
     }
     pub fn display_fmt(&self, ir: &Ir, pretty: bool) -> Result<DebugString, std::fmt::Error> {
-        let mut fmt = DebugString::new();
+        let mut fmt = DebugString::default();
         let kind = self.kind.display_fmt(ir, pretty)?;
         write!(fmt, "{}", kind)?;
         Ok(fmt)
@@ -103,7 +95,7 @@ impl Terminator {
 
 impl TerminatorKind {
     pub fn debug_fmt(&self, ir: &Ir, pretty: bool) -> Result<DebugString, std::fmt::Error> {
-        let mut fmt = DebugString::new();
+        let mut fmt = DebugString::default();
         match self {
             TerminatorKind::Goto { target } => {
                 let block = ir.basic_block_data(*target).debug_fmt(ir, pretty)?;
@@ -141,7 +133,7 @@ impl TerminatorKind {
         Ok(fmt)
     }
     pub fn display_fmt(&self, ir: &Ir, pretty: bool) -> Result<DebugString, std::fmt::Error> {
-        let mut fmt = DebugString::new();
+        let mut fmt = DebugString::default();
         match self {
             TerminatorKind::Goto { target } => {
                 let block = ir.basic_block_data(*target).display_fmt(ir, pretty)?;
@@ -150,9 +142,13 @@ impl TerminatorKind {
             TerminatorKind::If { condition, targets } => {
                 let then_block = ir.basic_block_data(targets.0).display_fmt(ir, pretty)?;
                 let else_block = ir.basic_block_data(targets.1).display_fmt(ir, pretty)?;
-                write!(fmt, "if({}){{\n{}\n}}else{{:\n{}}})", condition, then_block, else_block)?;
+                write!(
+                    fmt,
+                    "if({}){{\n{}\n}}else{{:\n{}}})",
+                    condition, then_block, else_block
+                )?;
             }
-            TerminatorKind::Return { expr }=> {
+            TerminatorKind::Return { expr } => {
                 write!(fmt, "return {}", expr)?;
             }
         }
@@ -228,12 +224,9 @@ impl Display for ExprOperator {
     }
 }
 
+#[derive(Default)]
 pub struct DebugString(String);
-impl DebugString {
-    pub fn new() -> Self {
-        DebugString(String::new())
-    }
-}
+
 impl Display for DebugString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)

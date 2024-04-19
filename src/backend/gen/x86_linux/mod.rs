@@ -99,7 +99,7 @@ impl X86Linux {
         for statement in &block.statements {
             self.process_statement(statement);
         }
-        if let None = block.terminator {
+        if block.terminator.is_none() {
             return;
         }
         let terminator = block.terminator.clone().unwrap();
@@ -135,7 +135,7 @@ impl X86Linux {
     fn process_lvalue(&mut self, lvalue: &Lvalue) -> Expression {
         match lvalue {
             Lvalue::Variable(var) => self.process_variable(var.clone()),
-            Lvalue::Temp(temp) => self.process_temp(temp.clone()),
+            Lvalue::Temp(temp) => self.process_temp(*temp),
         }
     }
 
@@ -164,7 +164,7 @@ impl X86Linux {
 
     fn process_operand(&mut self, operand: &Operand) -> Expression {
         match operand {
-            Operand::Consume(lvalue) => self.process_lvalue(&lvalue),
+            Operand::Consume(lvalue) => self.process_lvalue(lvalue),
             Operand::IntegerLit(x) => Expression::IntegerLiteral(*x),
             Operand::Unit => Expression::None,
         }

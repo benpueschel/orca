@@ -47,9 +47,9 @@ pub fn generate_code(nodes: &Vec<AssemblyNode>) -> String {
 fn get_expression(expression: &Expression, size: usize) -> String {
     match expression {
         Expression::IntegerLiteral(x) => format!("${}", x),
-        Expression::Register(reg) => format!("{}", ScratchRegisters::get_name(*reg, size)),
+        Expression::Register(reg) => ScratchRegisters::get_name(*reg, size).to_string(),
         Expression::Memory(x) => x.clone(),
-        Expression::Label(x) => format!("{}", x),
+        Expression::Label(x) => x.to_string(),
         Expression::None => panic!("Expression::None is not a valid expression"),
     }
 }

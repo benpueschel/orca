@@ -14,11 +14,10 @@ pub struct Branch {
 
 impl Ir {
     pub fn is_branching(&self, node: &ast::Node) -> bool {
-        match node.node_type {
-            NodeType::IfStatement(_) => true,
-            NodeType::ReturnStatement(_) => true,
-            _ => false,
-        }
+        matches!(
+            node.node_type,
+            NodeType::IfStatement(_) | NodeType::ReturnStatement(_)
+        )
     }
 
     pub fn traverse_return(&mut self, data: ReturnData, scope: Scope, span: Span) -> Branch {

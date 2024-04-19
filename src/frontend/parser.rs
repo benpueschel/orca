@@ -81,7 +81,7 @@ impl Parser {
     }
 
     fn peek_token(&mut self) -> Result<Token, Error> {
-        Ok(self.lexer.peek()?)
+        self.lexer.peek()
     }
     fn eat_token(&mut self) -> Result<Token, Error> {
         self.lexer.next_token()
@@ -92,8 +92,8 @@ impl Parser {
         // declarations atm. structs, enums, etc. will
         // have to be implemented
         match self.peek_token()?.token_type {
-            TokenType::Fn => return self.parse_fn_definition(),
-            x => return Err(unexpected_token!(x)),
+            TokenType::Fn => self.parse_fn_definition(),
+            x => Err(unexpected_token!(x)),
         }
     }
 
@@ -160,9 +160,8 @@ impl Parser {
 
         while self.peek_token()?.token_type != TokenType::BracketClose {
             let node = self.parse_statement()?;
-            match node {
-                Some(x) => body.push(x),
-                None => {}
+            if let Some(x) = node {
+                body.push(x)
             }
         }
         Ok(body)
@@ -277,13 +276,13 @@ impl Parser {
                 } else {
                     None
                 };
-                return Ok(Node {
+                Ok(Node {
                     span: Span::compose(first_token.span, last_token.span),
                     node_type: NodeType::LetDeclaration(LetDeclData { name, expr, r#type }),
-                });
+                })
             }
             TokenType::Semicolon => {
-                return Ok(Node {
+                Ok(Node {
                     span: Span::compose(first_token.span, last_token.span),
                     node_type: NodeType::LetDeclaration(LetDeclData {
                         name,

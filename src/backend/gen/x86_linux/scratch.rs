@@ -8,13 +8,14 @@ use crate::frontend::ir::{
 pub const REGISTER_SIZE: Register = 7;
 pub const ALL_REGISTERS_ALLOCATED: Register = 2 * (1 << (REGISTER_SIZE - 1)) - 1;
 
-pub const RAX: Register = 1 << REGISTER_SIZE + 0;
-pub const RCX: Register = 1 << REGISTER_SIZE + 1;
-pub const RDX: Register = 1 << REGISTER_SIZE + 2;
-pub const RDI: Register = 1 << REGISTER_SIZE + 3;
-pub const RSI: Register = 1 << REGISTER_SIZE + 4;
-pub const RBP: Register = 1 << REGISTER_SIZE + 5;
-pub const RSP: Register = 1 << REGISTER_SIZE + 6;
+#[allow(clippy::identity_op)]
+pub const RAX: Register = 1 << (REGISTER_SIZE + 0);
+pub const RCX: Register = 1 << (REGISTER_SIZE + 1);
+pub const RDX: Register = 1 << (REGISTER_SIZE + 2);
+pub const RDI: Register = 1 << (REGISTER_SIZE + 3);
+pub const RSI: Register = 1 << (REGISTER_SIZE + 4);
+pub const RBP: Register = 1 << (REGISTER_SIZE + 5);
+pub const RSP: Register = 1 << (REGISTER_SIZE + 6);
 
 pub type Register = usize;
 
@@ -59,14 +60,20 @@ pub enum ScratchLocation {
     Unassigned,
 }
 
-impl RegisterGraph {
-    #[allow(unused)]
-    pub fn new() -> Self {
+impl Default for RegisterGraph {
+    fn default() -> Self {
         RegisterGraph {
             nodes: HashMap::new(),
             scratch: ScratchRegisters::new(),
             stack_offset: 0,
         }
+    }
+}
+
+impl RegisterGraph {
+    #[allow(unused)]
+    pub fn new() -> Self {
+        RegisterGraph::default()
     }
     pub fn build_graph(&mut self, ir: &Ir) {
         self.traverse_graph(ir, IR_START_BLOCK);
@@ -179,13 +186,14 @@ impl RegisterGraph {
     }
 }
 
+#[derive(Default)]
 pub struct ScratchRegisters {
     registers: Register,
 }
 
 impl ScratchRegisters {
     pub fn new() -> Self {
-        ScratchRegisters { registers: 0 }
+        ScratchRegisters::default()
     }
 
     pub fn allocate(&mut self) -> Option<Register> {

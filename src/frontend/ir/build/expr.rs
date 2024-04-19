@@ -83,11 +83,11 @@ impl Ir {
                 let temp = Lvalue::Temp(self.alloc_temp(scope));
                 let operator = self.get_operator(data.operator.token_type);
                 stmts.push(Statement {
-                    span: span.into(),
+                    span,
                     kind: StatementKind::Assign(temp.clone(), left),
                 });
                 stmts.push(Statement {
-                    span: span.into(),
+                    span,
                     kind: StatementKind::Modify(temp.clone(), operator, right),
                 });
                 (Operand::Consume(temp), stmts)
@@ -112,7 +112,7 @@ impl Ir {
         scope: Scope,
     ) -> (Operand, Vec<Statement>) {
         match node.node_type {
-            NodeType::BinaryExpr(data) => self.traverse_binary_expr(data, node.span.into(), scope),
+            NodeType::BinaryExpr(data) => self.traverse_binary_expr(data, node.span, scope),
             NodeType::Identifier(data) => (
                 Operand::Consume(Lvalue::Variable(Var {
                     name: data.name,

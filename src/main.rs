@@ -37,9 +37,9 @@ fn main() -> io::Result<()> {
 
     let file = read_lines(opt.file)?;
     let mut input = String::new();
-    for line in file.flatten() {
+    file.map_while(Result::ok).for_each(|line| {
         input += &line;
-    }
+    });
 
     // TODO: parse target platform from options
     let target = TargetPlatform::LinuxX86_64;
@@ -59,7 +59,7 @@ fn main() -> io::Result<()> {
     if let NodeType::Program(data) = ast.clone().node_type {
         for node in data.body {
             if let NodeType::FnDeclaration(data) = node.node_type {
-                let mut ir = ir::build::Builder::build(data, node.span.into());
+                let mut ir = ir::build::Builder::build(data, node.span);
                 IrTransforamtion::transform_mut(&mut ir);
 
                 generator.process_graph(ir);
@@ -78,7 +78,7 @@ fn main() -> io::Result<()> {
 
         let asm_file = format!("{}/a.a", temp_dir);
         let o_file = format!("{}/a.o", temp_dir);
-        let out_file = format!("a.out");
+        let out_file = "a.out".to_string();
 
         std::fs::File::create(&asm_file)?.write_all(assembly.as_bytes())?;
 

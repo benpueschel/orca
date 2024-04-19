@@ -125,7 +125,7 @@ impl Lexer {
                 span: Span::single(i),
             }),
 
-            c if c >= '0' && c <= '9' => self.tokenize_number(i),
+            c if c.is_ascii_digit() => self.tokenize_number(i),
             c @ '_' | c if c.is_alphabetic() => self.tokenize_ident(i),
 
             x => Err(Error::new(
@@ -140,7 +140,7 @@ impl Lexer {
         let token = self.peek()?;
 
         self.current_pos = token.span.end;
-        return Ok(token);
+        Ok(token)
     }
 
     pub fn tokenize_ident(&self, pos: usize) -> Result<Token, LexerError> {
@@ -321,7 +321,7 @@ mod tests {
         }
         // go through all digits and test chars
         for c in 0..=9 {
-            test_token!((c + '0' as u8) as char, TokenType::Integer(c.into()));
+            test_token!((c + b'0') as char, TokenType::Integer(c.into()));
         }
     }
 
