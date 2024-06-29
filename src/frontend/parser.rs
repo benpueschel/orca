@@ -269,7 +269,7 @@ impl Parser {
         match last_token.token_type {
             // TODO: check types
             TokenType::Colon => {
-                let r#type = Some(self.parse_type()?);
+                let r#type = self.parse_type()?;
                 let expr = if let TokenType::Equal = self.peek_token()?.token_type {
                     self.eat_token()?;
                     Some(Box::new(self.parse_expression()?))
@@ -287,7 +287,7 @@ impl Parser {
                     node_type: NodeType::LetDeclaration(LetDeclData {
                         name,
                         expr: None,
-                        r#type: None,
+                        r#type: Type::Unresolved,
                     }),
                 })
             }

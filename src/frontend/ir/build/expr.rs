@@ -1,9 +1,8 @@
 use crate::{
     frontend::{
-        ast::{self, NodeType},
+        ast::{self, NodeType, Type},
         ir::{
-            ExprOperator, Lvalue, Operand, Rvalue, Scope, Statement, StatementKind, TempDecl,
-            TempVal, Var, VAR_UNINITIALIZED,
+            ExprOperator, Lvalue, Operand, Rvalue, Scope, Statement, StatementKind, TempDecl, TempVal, Var, VarType, VAR_UNINITIALIZED
         },
         lexer::TokenType,
     },
@@ -25,6 +24,7 @@ impl Ir {
                 Operand::Consume(Lvalue::Variable(Var {
                     name: data.name,
                     span: expr.span,
+                    var_type: Type::Unresolved,
                     id: VAR_UNINITIALIZED,
                 })),
                 vec![],
@@ -43,6 +43,7 @@ impl Ir {
                 Rvalue::Variable(Var {
                     name: data.name,
                     span: expr.span,
+                    var_type: Type::Unresolved,
                     id: VAR_UNINITIALIZED,
                 }),
                 vec![],
@@ -100,6 +101,7 @@ impl Ir {
             NodeType::Identifier(data) => Lvalue::Variable(Var {
                 name: data.name,
                 span: node.span,
+                var_type: Type::Unresolved,
                 id: VAR_UNINITIALIZED,
             }),
             x => panic!("node {:?} is not an lvalue", x),
@@ -117,6 +119,7 @@ impl Ir {
                 Operand::Consume(Lvalue::Variable(Var {
                     name: data.name,
                     span: node.span,
+                    var_type: Type::Unresolved,
                     id: VAR_UNINITIALIZED,
                 })),
                 vec![],

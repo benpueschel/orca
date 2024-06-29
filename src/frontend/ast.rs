@@ -28,6 +28,7 @@ pub enum Type {
     Usize,
     U32,
     Identifier(String),
+    Unresolved,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,7 +58,7 @@ pub struct FnDeclData {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LetDeclData {
     pub name: String,
-    pub r#type: Option<Type>,
+    pub r#type: Type,
     pub expr: Option<Box<Node>>,
 }
 

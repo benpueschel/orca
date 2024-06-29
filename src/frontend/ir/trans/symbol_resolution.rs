@@ -75,13 +75,17 @@ fn resolve_symbols_in_operand(ir: &mut Ir, operand: &mut Operand, scope: Scope) 
 fn resolve_symbol(ir: &mut Ir, var: &mut Var, scope_index: Scope) {
     let scope = ir.scope_data_mut(scope_index);
     for i in 0..scope.var_decls.len() {
-        if scope.var_decls[i].name == var.name {
+        // if we find the symbol in this scope, assign it an ID:
+        // the ID is a 64-bit integer with the high 32 bits being the scope index 
+        // and the low 32 bits being the index of the symbol in the scope
+        if scope.var_decls[i].var.name == var.name {
             let id = scope_index.0 << 32 | i;
-            scope.var_decls[i].id = id;
+            scope.var_decls[i].var.id = id;
             var.id = id;
             return;
         }
     }
+    // if we didn't find the symbol in this scope, try the parent scope
     if let Some(parent) = scope.parent {
         resolve_symbol(ir, var, parent);
         return;

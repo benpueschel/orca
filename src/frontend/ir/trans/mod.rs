@@ -1,6 +1,7 @@
 use super::Ir;
 
 pub mod symbol_resolution;
+pub mod type_resolution;
 
 pub struct IrTransforamtion {}
 impl IrTransforamtion {
@@ -10,5 +11,6 @@ impl IrTransforamtion {
     }
     pub fn transform_mut(ir: &mut Ir) {
         symbol_resolution::resolve_symbols_mut(ir);
+        type_resolution::resolve_types_mut(ir);
     }
 }

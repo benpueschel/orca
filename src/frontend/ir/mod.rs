@@ -2,6 +2,8 @@ use std::ops::{Index, IndexMut};
 
 use crate::span::Span;
 
+use super::ast::{self, Type};
+
 pub mod build;
 pub mod debug;
 pub mod trans;
@@ -14,6 +16,14 @@ pub struct Ir {
     pub scopes: Vec<ScopeData>,
     pub span: Span,
     pub fn_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum VarType {
+    Usize,
+    Unit,
+    UserDefined(String),
+    Unresolved
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -173,14 +183,13 @@ const VAR_UNINITIALIZED: usize = usize::MAX;
 pub struct Var {
     pub name: String,
     pub id: usize,
+    pub var_type: ast::Type,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarDecl {
-    pub name: String,
-    pub id: usize,
-    pub span: Span,
+    pub var: Var,
     pub scope: Scope,
 }
 
@@ -196,5 +205,16 @@ impl Ir {
     }
     pub fn scope_data_mut(&mut self, scope: Scope) -> &mut ScopeData {
         &mut self.scopes[scope.index()]
+    }
+    pub fn find_declaration(&mut self, var: &Var) -> &mut VarDecl {
+        // let id = scope_index.0 << 32 | i;
+        let scope_index = var.id >> 32;
+        let var_index = var.id & 0xFFFF_FFFF;
+
+        println!("id: {:x}", var.id);
+        println!("scope_index: {:x}, var_index: {:x}", scope_index, var_index);
+
+        let scope = &mut self.scopes[scope_index];
+        &mut scope.var_decls[var_index]
     }
 }

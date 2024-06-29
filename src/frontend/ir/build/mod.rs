@@ -13,8 +13,8 @@ pub struct BasicBlockBuilder {
 }
 
 use super::{
-    BasicBlock, BasicBlockData, Ir, Lvalue, Scope, ScopeData, Statement, Terminator, Var,
-    VarDecl, VAR_UNINITIALIZED,
+    BasicBlock, BasicBlockData, Ir, Lvalue, Scope, ScopeData, Statement, Terminator, Var, VarDecl,
+    VarType, VAR_UNINITIALIZED,
 };
 
 pub mod branch;
@@ -134,23 +134,20 @@ impl Ir {
         scope: Scope,
     ) -> Vec<Statement> {
         let scope_data = self.scope_data_mut(scope);
-        scope_data.var_decls.push(VarDecl {
+        let var = Var {
             name: data.name.clone(),
             id: VAR_UNINITIALIZED,
-            scope,
+            var_type: data.r#type,
             span,
+        };
+        scope_data.var_decls.push(VarDecl {
+            var: var.clone(),
+            scope,
         });
         if let Some(expr) = data.expr {
             let (right, mut statements) = self.traverse_rvalue(*expr, scope);
             statements.push(Statement {
-                kind: StatementKind::Assign(
-                    Lvalue::Variable(Var {
-                        name: data.name,
-                        id: VAR_UNINITIALIZED,
-                        span,
-                    }),
-                    right,
-                ),
+                kind: StatementKind::Assign(Lvalue::Variable(var), right),
                 span,
             });
             return statements;
