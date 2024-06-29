@@ -1,0 +1,12 @@
+fn main() {
+	let x: usize = 1;
+	let y: usize = 5 * x;
+
+	if(x < y) {
+		y = 3;
+	} else {
+		y = 6;
+	}
+
+	return y - 3;
+}
