@@ -14,7 +14,7 @@ pub struct BasicBlockBuilder {
 
 use super::{
     BasicBlock, BasicBlockData, Ir, Lvalue, Scope, ScopeData, Statement, Terminator, Var, VarDecl,
-    VarType, VAR_UNINITIALIZED,
+    VAR_UNINITIALIZED,
 };
 
 pub mod branch;

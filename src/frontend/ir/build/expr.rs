@@ -2,7 +2,8 @@ use crate::{
     frontend::{
         ast::{self, NodeType, Type},
         ir::{
-            ExprOperator, Lvalue, Operand, Rvalue, Scope, Statement, StatementKind, TempDecl, TempVal, Var, VarType, VAR_UNINITIALIZED
+            ExprOperator, Lvalue, Operand, Rvalue, Scope, Statement, StatementKind, TempDecl,
+            TempVal, Var, VAR_UNINITIALIZED,
         },
         lexer::TokenType,
     },

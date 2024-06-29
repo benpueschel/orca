@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use crate::span::Span;
 
-use super::ast::{self, Type};
+use super::ast;
 
 pub mod build;
 pub mod debug;
@@ -23,7 +23,7 @@ pub enum VarType {
     Usize,
     Unit,
     UserDefined(String),
-    Unresolved
+    Unresolved,
 }
 
 #[derive(Debug, Clone, PartialEq)]

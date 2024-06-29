@@ -281,16 +281,14 @@ impl Parser {
                     node_type: NodeType::LetDeclaration(LetDeclData { name, expr, r#type }),
                 })
             }
-            TokenType::Semicolon => {
-                Ok(Node {
-                    span: Span::compose(first_token.span, last_token.span),
-                    node_type: NodeType::LetDeclaration(LetDeclData {
-                        name,
-                        expr: None,
-                        r#type: Type::Unresolved,
-                    }),
-                })
-            }
+            TokenType::Semicolon => Ok(Node {
+                span: Span::compose(first_token.span, last_token.span),
+                node_type: NodeType::LetDeclaration(LetDeclData {
+                    name,
+                    expr: None,
+                    r#type: Type::Unresolved,
+                }),
+            }),
             x => Err(unexpected_token!(x, "Expected Colon or Semicolon")),
         }
     }
